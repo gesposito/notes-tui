@@ -232,6 +232,38 @@ export const osascriptBackend: NotesBackend = {
     return JSON.parse(await osascript(script));
   },
 
+  async getFolderBodies(
+    folderIds: string[],
+    signal?: AbortSignal,
+  ): Promise<Record<string, Record<string, string>>> {
+    if (folderIds.length === 0) return {};
+    // Same shape as getFolderSnippets — one bulk plaintext() call per folder
+    // — but we keep the full body so the search index can match anywhere.
+    const idsJson = JSON.stringify(folderIds);
+    const script = `
+      const Notes = Application("Notes");
+      const folderIds = ${idsJson};
+      const out = {};
+      for (let f = 0; f < folderIds.length; f++) {
+        const fid = folderIds[f];
+        try {
+          const folder = Notes.folders.byId(fid);
+          const ids = folder.notes.id();
+          const plaintexts = folder.notes.plaintext();
+          const bodies = {};
+          for (let k = 0; k < ids.length; k++) {
+            bodies[ids[k]] = plaintexts[k] || "";
+          }
+          out[fid] = bodies;
+        } catch (e) {
+          out[fid] = {};
+        }
+      }
+      JSON.stringify(out);
+    `;
+    return JSON.parse(await osascript(script, "JavaScript", signal));
+  },
+
   async updateNoteBody(noteId: string, body: string): Promise<void> {
     // Wrap each line in <div> so newlines survive; empty lines become <br>.
     // This matches Apple Notes' own paragraph structure when it serializes back.

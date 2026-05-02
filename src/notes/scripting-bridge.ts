@@ -147,6 +147,15 @@ class ScriptingBridgeBackend implements NotesBackend {
     return this.call("getNoteBody", { noteId }, signal);
   }
 
+  // Helper doesn't implement bulk-body; defer to osa. The search index
+  // calls this in chunks, so the per-call spawn cost stays bounded.
+  getFolderBodies(
+    folderIds: string[],
+    signal?: AbortSignal,
+  ): Promise<Record<string, Record<string, string>>> {
+    return osascriptBackend.getFolderBodies(folderIds, signal);
+  }
+
   getNoteHtml(noteId: string, signal?: AbortSignal): Promise<string> {
     return this.call("getNoteHtml", { noteId }, signal);
   }

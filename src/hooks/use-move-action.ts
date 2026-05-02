@@ -13,6 +13,7 @@ type Deps = {
   setToast: (s: string) => void;
   invalidateNotes: (ids: Iterable<string>) => void;
   invalidateSnippets: (ids: Iterable<string>) => void;
+  invalidateIndex: (ids: Iterable<string>) => void;
   reload: () => Promise<unknown>;
 };
 
@@ -108,6 +109,7 @@ export const useMoveAction = (deps: Deps) => {
       deps.setFocused("notes");
       deps.invalidateNotes(sourceFolderIds);
       deps.invalidateSnippets(sourceFolderIds);
+      deps.invalidateIndex(sourceFolderIds);
       await deps.reload();
     } catch (e) {
       deps.setToast(

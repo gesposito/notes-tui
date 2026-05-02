@@ -44,7 +44,8 @@ export const SHORTCUTS: ShortcutGroup[] = [
     bindings: [
       {
         key: "f",
-        description: "Note List Search (⌥⌘F also)",
+        description:
+          "Search title + body in current folder (subfolders too if collapsed; ⌥⌘F also)",
       },
       { key: "s", description: "Sort By… (Date Modified ↓ / ↑ / Title)" },
       { key: "r", description: "Refresh (pull external changes)" },

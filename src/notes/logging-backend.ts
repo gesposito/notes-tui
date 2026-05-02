@@ -160,6 +160,10 @@ export const wrapWithLogging = (backend: NotesBackend): NotesBackend => ({
     wrap("getFolderSnippets", folderIds, () =>
       backend.getFolderSnippets(folderIds, signal),
     ),
+  getFolderBodies: (folderIds, signal) =>
+    wrap("getFolderBodies", `${folderIds.length} folders`, () =>
+      backend.getFolderBodies(folderIds, signal),
+    ),
   getNoteBody: (noteId, signal) =>
     wrap<string>("getNoteBody", noteId, () => backend.getNoteBody(noteId, signal)),
   getNoteHtml: (noteId, signal) =>

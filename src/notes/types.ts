@@ -54,6 +54,16 @@ export interface NotesBackend {
     folderIds: string[],
     signal?: AbortSignal,
   ): Promise<Record<string, Record<string, string>>>;
+  /**
+   * Batched full-plaintext fetch. Same Apple Event cost as `getFolderSnippets`
+   * (one bulk `folder.notes.plaintext()` call per folder), but returns the
+   * whole body keyed by note id. Used by the search index so filter mode can
+   * match against body content.
+   */
+  getFolderBodies(
+    folderIds: string[],
+    signal?: AbortSignal,
+  ): Promise<Record<string, Record<string, string>>>;
   moveNotes(
     moves: Array<{ noteId: string; folderId: string }>,
   ): Promise<MoveResult[]>;

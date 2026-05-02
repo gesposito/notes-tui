@@ -10,7 +10,7 @@ import {
   useRenderer,
   useTerminalDimensions,
 } from "@opentui/react";
-import type { Folder } from "./notes/index.ts";
+import type { Folder, Note } from "./notes/index.ts";
 import { notes as defaultBackend } from "./notes/index.ts";
 import { NotesProvider, useNotes } from "./notes/context.tsx";
 import { SORT_LABEL, sortNotes, type SortMode } from "./lib/sort.ts";
@@ -32,6 +32,7 @@ import { useFolders } from "./hooks/use-folders.ts";
 import { useNotesByFolder } from "./hooks/use-notes-by-folder.ts";
 import { useFolderSnippets } from "./hooks/use-folder-snippets.ts";
 import { useNotePreview } from "./hooks/use-note-preview.ts";
+import { useNoteIndex } from "./hooks/use-note-index.ts";
 import { useMoveAction } from "./hooks/use-move-action.ts";
 import { useAppKeybindings } from "./hooks/use-app-keybindings.ts";
 import {
@@ -173,21 +174,68 @@ export const App = () => {
     setNoteCursor(0);
   }, [debouncedFolderCursor, filter, sort]);
 
+  // ── Search index (full-body, scoped to the visible selection) ──────────
+  // The index covers the same folders that are *visible* in the notes pane:
+  //   - leaf or expanded parent → just the active folder
+  //   - collapsed parent → that folder + its subtree
+  // i.e. exactly `activeFolderIds`. Search results match what the user can
+  // see, which is much less surprising than a global index.
+  const scopedFolderIds = useMemo(
+    () => Array.from(activeFolderIds),
+    [activeFolderIds],
+  );
+  const indexEnabled = mode.kind === "filter" || filter.length > 0;
+  const {
+    index: noteIndex,
+    progress: indexProgress,
+    indexing,
+    invalidate: invalidateIndex,
+  } = useNoteIndex(scopedFolderIds, indexEnabled, previewBustToken);
+
   // ── Visible notes (filter + sort) ───────────────────────────────────────
   const visibleNotes = useMemo(() => {
-    if (activeFolderIds.size === 0) return [];
-    const all = [];
+    // No filter: scoped to the active folder (current behavior).
+    if (!filter) {
+      if (activeFolderIds.size === 0) return [];
+      const all = [];
+      for (const fid of activeFolderIds) {
+        const arr = notesByFolder.get(fid);
+        if (arr) all.push(...arr);
+      }
+      return sortNotes(all, sort);
+    }
+    // Filter active: same scope, but match title + body via the index.
+    // The index cache may carry entries from previously-scoped folders
+    // (cheaper to keep them than to re-fetch later), so we filter to the
+    // active scope explicitly here.
+    const q = filter.toLowerCase();
+    const matches: Note[] = [];
+    const seen = new Set<string>();
+    for (const entry of noteIndex.values()) {
+      if (!activeFolderIds.has(entry.folderId)) continue;
+      if (
+        entry.title.toLowerCase().includes(q) ||
+        entry.body.toLowerCase().includes(q)
+      ) {
+        matches.push(entry);
+        seen.add(entry.id);
+      }
+    }
+    // Fallback for folders in scope that aren't indexed yet — title-only
+    // match so something appears immediately.
     for (const fid of activeFolderIds) {
       const arr = notesByFolder.get(fid);
-      if (arr) all.push(...arr);
+      if (!arr) continue;
+      for (const n of arr) {
+        if (seen.has(n.id)) continue;
+        if (n.title.toLowerCase().includes(q)) {
+          matches.push(n);
+          seen.add(n.id);
+        }
+      }
     }
-    const filtered = !filter
-      ? all
-      : all.filter((n) =>
-          n.title.toLowerCase().includes(filter.toLowerCase()),
-        );
-    return sortNotes(filtered, sort);
-  }, [notesByFolder, activeFolderIds, filter, sort]);
+    return sortNotes(matches, sort);
+  }, [notesByFolder, activeFolderIds, filter, sort, noteIndex]);
 
   // ── Viewport math ───────────────────────────────────────────────────────
   const filterRowVisible = mode.kind === "filter" || filter.length > 0;
@@ -287,6 +335,7 @@ export const App = () => {
     setToast,
     invalidateNotes,
     invalidateSnippets,
+    invalidateIndex,
     reload,
   });
 
@@ -334,6 +383,7 @@ export const App = () => {
       // Invalidate this folder's note cache + reload folder counts.
       invalidateNotes([activeFolder.id]);
       invalidateSnippets([activeFolder.id]);
+      invalidateIndex([activeFolder.id]);
       await reload();
     } catch (e) {
       setToast(
@@ -435,6 +485,7 @@ export const App = () => {
       if (highlightedNote) {
         invalidateNotes([highlightedNote.folderId]);
         invalidateSnippets([highlightedNote.folderId]);
+        invalidateIndex([highlightedNote.folderId]);
       }
       setPreviewBustToken((t) => t + 1);
       await reload();
@@ -614,6 +665,20 @@ export const App = () => {
             "Edit Note · Ctrl+S Save (formatting lost — see EDITING.md) · Esc Cancel"}
         </text>
       </box>
+      {indexEnabled && indexing && (
+        <text fg="#e6c200">
+          Indexing {indexProgress.loaded}/{indexProgress.total} folder
+          {indexProgress.total === 1 ? "" : "s"} in scope for full-text
+          search… (collapse a parent to widen, more specific terms to narrow)
+        </text>
+      )}
+      {indexEnabled && !indexing && filter.length > 0 && (
+        <text fg="#777">
+          {visibleNotes.length} match{visibleNotes.length === 1 ? "" : "es"}
+          {" "}in {indexProgress.total} folder
+          {indexProgress.total === 1 ? "" : "s"}
+        </text>
+      )}
       {toast && <text fg="#33cc66">{toast}</text>}
       {helpOpen && <HelpDialog />}
       {mode.kind === "newFolder" && (
