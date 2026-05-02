@@ -4,14 +4,14 @@ export interface Folder {
   account: string;
   path: string;
   depth: number;
+  /** Direct note count (notes whose container is this folder, not descendants). */
+  noteCount: number;
 }
 
 export interface Note {
   id: string;
   title: string;
   folderId: string;
-  folderPath: string;
-  account: string;
   modifiedAt: string | null;
 }
 
@@ -22,23 +22,22 @@ export interface MoveResult {
 }
 
 export interface NotesBackend {
-  /**
-   * Combined fetch: returns both folders and notes in a single backend call.
-   * Cheaper than `Promise.all([listFolders(), listNotes()])` for osa (one
-   * spawn, shared per-folder iteration, app-level note-metadata bulk).
-   */
-  listAll(): Promise<{ folders: Folder[]; notes: Note[] }>;
+  /** Folders + their direct note counts. Fast: no per-note fetches. */
   listFolders(): Promise<Folder[]>;
-  listNotes(): Promise<Note[]>;
-  moveNotes(
-    moves: Array<{ noteId: string; folderId: string }>,
-  ): Promise<MoveResult[]>;
+  /**
+   * Per-folder note metadata (id/title/date). One backend call regardless of
+   * how many folders. Returns the merged list; use n.folderId to group.
+   */
+  getFolderNotes(folderIds: string[]): Promise<Note[]>;
   getNoteBody(noteId: string): Promise<string>;
   /**
    * Batched snippet fetch. Returns `{ folderId: { noteId: snippet } }` for every
-   * requested folder. One backend call regardless of how many folders.
+   * requested folder.
    */
   getFolderSnippets(
     folderIds: string[],
   ): Promise<Record<string, Record<string, string>>>;
+  moveNotes(
+    moves: Array<{ noteId: string; folderId: string }>,
+  ): Promise<MoveResult[]>;
 }

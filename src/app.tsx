@@ -65,7 +65,6 @@ const App = () => {
   // Approx visible rows per pane: terminal height minus borders, title, footer, toast.
   const pageStep = Math.max(5, termHeight - 6);
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [allNotes, setAllNotes] = useState<Note[]>([]);
   const [folderCursor, setFolderCursor] = useState(0);
   const [noteCursor, setNoteCursor] = useState(0);
   const [marked, setMarked] = useState<Set<string>>(new Set());
@@ -87,14 +86,20 @@ const App = () => {
     Map<string, Record<string, string>>
   >(new Map());
   const inFlightSnippets = useRef<Set<string>>(new Set());
+  // Lazy-loaded notes: Map<folderId, Note[]>. Populated on demand per folder.
+  const [notesByFolder, setNotesByFolder] = useState<Map<string, Note[]>>(
+    new Map(),
+  );
+  const inFlightNotes = useRef<Set<string>>(new Set());
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const { folders: f, notes: n } = await notes.listAll();
+      const f = await notes.listFolders();
       setFolders(f);
-      setAllNotes(n);
+      // Cached notes/snippets stay across reload; entries for moved-from
+      // and moved-to folders should be invalidated by the caller.
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -122,11 +127,60 @@ const App = () => {
 
   const visibleNotes = useMemo(() => {
     if (activeFolderIds.size === 0) return [];
-    const inFolder = allNotes.filter((n) => activeFolderIds.has(n.folderId));
-    if (!filter) return inFolder;
+    const all: Note[] = [];
+    for (const fid of activeFolderIds) {
+      const arr = notesByFolder.get(fid);
+      if (arr) all.push(...arr);
+    }
+    if (!filter) return all;
     const q = filter.toLowerCase();
-    return inFolder.filter((n) => n.title.toLowerCase().includes(q));
-  }, [allNotes, activeFolderIds, filter]);
+    return all.filter((n) => n.title.toLowerCase().includes(q));
+  }, [notesByFolder, activeFolderIds, filter]);
+
+  // Lazy-fetch notes for any active folder we don't have cached yet.
+  // One backend call covers the whole fan-out (active + descendants).
+  useEffect(() => {
+    if (activeFolderIds.size === 0) return;
+    const toFetch: string[] = [];
+    for (const folderId of activeFolderIds) {
+      if (notesByFolder.has(folderId)) continue;
+      if (inFlightNotes.current.has(folderId)) continue;
+      toFetch.push(folderId);
+      inFlightNotes.current.add(folderId);
+    }
+    if (toFetch.length === 0) return;
+    notes
+      .getFolderNotes(toFetch)
+      .then((arr) => {
+        // Group returned notes by folderId.
+        const grouped: Record<string, Note[]> = {};
+        for (const n of arr) {
+          (grouped[n.folderId] ||= []).push(n);
+        }
+        setNotesByFolder((m) => {
+          const next = new Map(m);
+          for (const fid of toFetch) {
+            next.set(fid, grouped[fid] ?? []);
+          }
+          return next;
+        });
+      })
+      .catch((e) => {
+        setToast(
+          `Failed to load notes: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      })
+      .finally(() => {
+        for (const fid of toFetch) inFlightNotes.current.delete(fid);
+      });
+  }, [activeFolderIds, notesByFolder]);
+
+  // For O(1) folder lookup by id (account/path resolution from a Note).
+  const folderById = useMemo(() => {
+    const m = new Map<string, Folder>();
+    for (const f of folders) m.set(f.id, f);
+    return m;
+  }, [folders]);
 
   // Reset note cursor when active folder or filter changes.
   useEffect(() => {
@@ -232,25 +286,22 @@ const App = () => {
   }, [highlightedNoteId]);
 
   const folderCounts = useMemo(() => {
-    const direct: Record<string, number> = {};
-    for (const n of allNotes) {
-      direct[n.folderId] = (direct[n.folderId] ?? 0) + 1;
-    }
-    // Recursive: each folder's total = direct + sum over descendants' direct.
-    // Descendants identified via path prefix. O(F²); fine for ~hundreds of folders.
+    // Direct counts come from the backend (Folder.noteCount).
+    // Recursive: each folder's total = own + sum over descendants. O(F²);
+    // fine for hundreds of folders.
     const recursive: Record<string, number> = {};
     for (const f of folders) {
-      let total = direct[f.id] ?? 0;
+      let total = f.noteCount;
       const prefix = f.path + " / ";
       for (const child of folders) {
         if (child.id !== f.id && child.path.startsWith(prefix)) {
-          total += direct[child.id] ?? 0;
+          total += child.noteCount;
         }
       }
       recursive[f.id] = total;
     }
     return recursive;
-  }, [allNotes, folders]);
+  }, [folders]);
 
   const folderOptions: SelectOption[] = useMemo(
     () =>
@@ -297,6 +348,19 @@ const App = () => {
       setToast("Nothing to move");
       return;
     }
+    // Identify source folder ids so we know what to invalidate.
+    const sourceFolderIds = new Set<string>();
+    for (const id of ids) {
+      for (const arr of notesByFolder.values()) {
+        const note = arr.find((n) => n.id === id);
+        if (note) {
+          sourceFolderIds.add(note.folderId);
+          break;
+        }
+      }
+    }
+    sourceFolderIds.add(target.id);
+
     setLoading(true);
     try {
       const results = await notes.moveNotes(
@@ -311,6 +375,18 @@ const App = () => {
       setMarked(new Set());
       setMode({ kind: "browse" });
       setFocused("notes");
+      // Invalidate notes + snippets for source(s) and destination so the
+      // next render re-fetches fresh data.
+      setNotesByFolder((m) => {
+        const next = new Map(m);
+        for (const fid of sourceFolderIds) next.delete(fid);
+        return next;
+      });
+      setSnippetCache((m) => {
+        const next = new Map(m);
+        for (const fid of sourceFolderIds) next.delete(fid);
+        return next;
+      });
       await reload();
     } catch (e) {
       setToast(`Move failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -417,11 +493,18 @@ const App = () => {
         setToast("Nothing to move");
         return;
       }
-      const accounts = new Set(
-        ids
-          .map((id) => allNotes.find((n) => n.id === id)?.account)
-          .filter((a): a is string => !!a),
-      );
+      // Account lookup: notes don't carry account directly; resolve via folder.
+      const accounts = new Set<string>();
+      for (const id of ids) {
+        for (const arr of notesByFolder.values()) {
+          const note = arr.find((n) => n.id === id);
+          if (note) {
+            const folder = folderById.get(note.folderId);
+            if (folder) accounts.add(folder.account);
+            break;
+          }
+        }
+      }
       if (accounts.size > 1) {
         setToast("Cannot move across accounts");
         return;

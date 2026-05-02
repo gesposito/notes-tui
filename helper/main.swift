@@ -100,12 +100,19 @@ func listFolders() -> Any {
 
         for id in orderedIds {
             let n = nodes[id]!
+            // Note count: 1 Apple Event per folder for the SBElementArray length.
+            var noteCount = 0
+            if let folder = foldersArr.object(withID: id) as? SBObject,
+               let notesArr = elements(folder, "notes") {
+                noteCount = notesArr.count
+            }
             out.append([
                 "id": id,
                 "name": n.name,
                 "account": accountName,
                 "path": n.path,
                 "depth": n.depth,
+                "noteCount": noteCount,
             ])
         }
     }
@@ -191,6 +198,33 @@ func listNotes() -> Any {
         build=\(Int(tBuild * 1000))ms count=\(out.count)
         """
     FileHandle.standardError.write(Data((log + "\n").utf8))
+    return out
+}
+
+func getFolderNotes(folderIds: [String]) -> Any {
+    var out: [[String: Any]] = []
+    guard let foldersArr = (app as AnyObject).value(forKey: "folders") as? SBElementArray else {
+        return out
+    }
+    for fid in folderIds {
+        guard let folder = foldersArr.object(withID: fid) as? SBObject,
+              let notesArr = elements(folder, "notes")
+        else { continue }
+        let ids = bulkGet(notesArr, "id") as? [String] ?? []
+        let names = bulkGet(notesArr, "name") as? [String] ?? []
+        let dates = bulkGet(notesArr, "modificationDate") as? [Date] ?? []
+        let count = min(ids.count, names.count)
+        for k in 0..<count {
+            let dateAny: Any =
+                k < dates.count ? isoFormatter.string(from: dates[k]) : NSNull()
+            out.append([
+                "id": ids[k],
+                "title": names[k],
+                "folderId": fid,
+                "modifiedAt": dateAny,
+            ])
+        }
+    }
     return out
 }
 
@@ -284,6 +318,9 @@ while let line = readLine() {
         result = listFolders()
     case "listNotes":
         result = listNotes()
+    case "getFolderNotes":
+        let folderIds = params["folderIds"] as? [String] ?? []
+        result = getFolderNotes(folderIds: folderIds)
     case "getFolderSnippets":
         result = getFolderSnippets(folderId: params["folderId"] as? String ?? "")
     case "getNoteBody":

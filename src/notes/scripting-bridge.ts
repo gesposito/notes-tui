@@ -1,9 +1,4 @@
-import type {
-  Folder,
-  MoveResult,
-  Note,
-  NotesBackend,
-} from "./types.ts";
+import type { Folder, MoveResult, Note, NotesBackend } from "./types.ts";
 
 type Pending = {
   resolve: (value: unknown) => void;
@@ -98,21 +93,13 @@ class ScriptingBridgeBackend implements NotesBackend {
     return promise;
   }
 
-  async listAll(): Promise<{ folders: Folder[]; notes: Note[] }> {
-    // SB has no spawn cost, so the existing parallel pattern is fine.
-    const [folders, notes] = await Promise.all([
-      this.listFolders(),
-      this.listNotes(),
-    ]);
-    return { folders, notes };
-  }
-
   listFolders(): Promise<Folder[]> {
     return this.call("listFolders");
   }
 
-  listNotes(): Promise<Note[]> {
-    return this.call("listNotes");
+  getFolderNotes(folderIds: string[]): Promise<Note[]> {
+    if (folderIds.length === 0) return Promise.resolve([]);
+    return this.call("getFolderNotes", { folderIds });
   }
 
   async getFolderSnippets(
