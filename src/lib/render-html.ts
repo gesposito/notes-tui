@@ -62,15 +62,20 @@ export const htmlToTerminalText = (html: string): string => {
     "[ ] ",
   );
 
-  // Headers → blank line buffer
-  text = text.replace(/<h[1-6][^>]*>/gi, "\n\n");
-  text = text.replace(/<\/h[1-6]>/gi, "\n");
+  // Headers → single newline both sides. Trailing \s* consumes the literal
+  // newline between adjacent tags so the heading sits flush with body.
+  text = text.replace(/<h[1-6][^>]*>\s*/gi, "\n");
+  text = text.replace(/<\/h[1-6]>\s*/gi, "\n");
 
-  // <br>, <p>, <div>. Closing block elements get a blank line so paragraphs
-  // are visually separated; collapse step below caps total runs.
-  text = text.replace(/<br\s*\/?>/gi, "\n");
-  text = text.replace(/<\/p\s*>/gi, "\n\n");
-  text = text.replace(/<\/div\s*>/gi, "\n\n");
+  // <br>, <p>, <div>. The trailing \s* consumes literal whitespace between
+  // adjacent block tags (Apple's body HTML has a real newline between
+  // every <div>, which would otherwise compound with our replacement
+  // into a blank line between every visible row).
+  // <div> = a row in Apple Notes, so a single \n suffices. <p> gets the
+  // traditional blank-line paragraph break.
+  text = text.replace(/<br\s*\/?>\s*/gi, "\n");
+  text = text.replace(/<\/p\s*>\s*/gi, "\n\n");
+  text = text.replace(/<\/div\s*>\s*/gi, "\n");
   text = text.replace(/<p[^>]*>/gi, "");
   text = text.replace(/<div[^>]*>/gi, "");
 

@@ -36,6 +36,19 @@ describe("htmlToTerminalText", () => {
     expect(out).toBe("One\n\nTwo\n\nthree\nfour");
   });
 
+  test("Apple-style <div> rows render as adjacent lines, not blank-separated", () => {
+    // Apple Notes emits each visible row as a <div>, with a literal newline
+    // between tags. We must not insert a blank line between them.
+    const html = "<div>First</div>\n<div>Second</div>\n<div>Third</div>";
+    expect(htmlToTerminalText(html)).toBe("First\nSecond\nThird");
+  });
+
+  test("<div><br></div> renders as a single blank line between rows", () => {
+    const html =
+      "<div>A</div>\n<div><br></div>\n<div>B</div>";
+    expect(htmlToTerminalText(html)).toBe("A\n\nB");
+  });
+
   test("headers get a blank-line buffer", () => {
     const out = htmlToTerminalText("<h1>Title</h1><p>Body</p>");
     expect(out).toContain("Title");
