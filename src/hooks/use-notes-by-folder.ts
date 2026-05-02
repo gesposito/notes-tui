@@ -25,9 +25,11 @@ export const useNotesByFolder = (activeFolderIds: Set<string>) => {
       inFlight.current.add(folderId);
     }
     if (toFetch.length === 0) return;
+    const controller = new AbortController();
     notes
-      .getFolderNotes(toFetch)
+      .getFolderNotes(toFetch, controller.signal)
       .then((arr) => {
+        if (controller.signal.aborted) return;
         const grouped: Record<string, Note[]> = {};
         for (const n of arr) (grouped[n.folderId] ||= []).push(n);
         setNotesByFolder((m) => {
@@ -37,11 +39,13 @@ export const useNotesByFolder = (activeFolderIds: Set<string>) => {
         });
       })
       .catch((e) => {
+        if (controller.signal.aborted) return;
         setError(e instanceof Error ? e.message : String(e));
       })
       .finally(() => {
         for (const fid of toFetch) inFlight.current.delete(fid);
       });
+    return () => controller.abort();
   }, [activeFolderIds, notesByFolder, notes]);
 
   const invalidate = (folderIds: Iterable<string>): void => {

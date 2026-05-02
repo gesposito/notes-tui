@@ -23,6 +23,8 @@ type Props = {
   onChange: (i: number) => void;
   onMouseDown: (e: OpenTUIMouseEvent) => void;
   onMouseScroll: (e: OpenTUIMouseEvent) => void;
+  // When the underlying list is capped, how many notes are hidden.
+  hiddenCount?: number;
 };
 
 export const NotesPane = ({
@@ -40,6 +42,7 @@ export const NotesPane = ({
   onChange,
   onMouseDown,
   onMouseScroll,
+  hiddenCount = 0,
 }: Props) => (
   <box
     width={NOTES_PANE_WIDTH}
@@ -76,6 +79,11 @@ export const NotesPane = ({
         onMouseDown={onMouseDown}
         onChange={onChange}
       />
+    )}
+    {hiddenCount > 0 && (
+      <text fg="#777">
+        + {hiddenCount} more — narrow folder or use Search (f)
+      </text>
     )}
   </box>
 );

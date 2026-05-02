@@ -22,9 +22,11 @@ export const useFolderSnippets = (activeFolderIds: Set<string>) => {
       inFlight.current.add(folderId);
     }
     if (toFetch.length === 0) return;
+    const controller = new AbortController();
     notes
-      .getFolderSnippets(toFetch)
+      .getFolderSnippets(toFetch, controller.signal)
       .then((byFolder) => {
+        if (controller.signal.aborted) return;
         setSnippetCache((m) => {
           const next = new Map(m);
           for (const [fid, snippets] of Object.entries(byFolder)) {
@@ -39,6 +41,7 @@ export const useFolderSnippets = (activeFolderIds: Set<string>) => {
       .finally(() => {
         for (const fid of toFetch) inFlight.current.delete(fid);
       });
+    return () => controller.abort();
   }, [activeFolderIds, snippetCache, notes]);
 
   const invalidate = (folderIds: Iterable<string>): void => {

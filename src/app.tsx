@@ -39,6 +39,7 @@ import {
   usePaneViewport,
   useScrollOffset,
 } from "./hooks/use-pane-viewport.ts";
+import { useDebouncedValue } from "./hooks/use-debounced-value.ts";
 import { FolderPane } from "./components/FolderPane.tsx";
 import { NotesPane } from "./components/NotesPane.tsx";
 import { PreviewPane } from "./components/PreviewPane.tsx";
@@ -64,7 +65,12 @@ export const App = () => {
     return m;
   }, [folders]);
   const folderCounts = useMemo(() => recursiveFolderCounts(folders), [folders]);
-  const activeFolder = folders[folderCursor];
+  // The folder Select gets the immediate `folderCursor` so navigation feels
+  // instant; downstream effects (lazy notes/snippets fetches, preview) drive
+  // off the debounced value so blasting through folders doesn't fan out
+  // dozens of in-flight osascript spawns.
+  const debouncedFolderCursor = useDebouncedValue(folderCursor, 150);
+  const activeFolder = folders[debouncedFolderCursor];
   const activeFolderIds = useMemo(() => {
     if (!activeFolder) return new Set<string>();
     if (!recursiveView) return new Set([activeFolder.id]);
@@ -101,10 +107,12 @@ export const App = () => {
     if (notesError) setToast(`Failed to load notes: ${notesError}`);
   }, [notesError]);
 
-  // Reset note cursor when active folder, filter, or sort changes.
+  // Reset note cursor when active folder, filter, or sort changes. Tied to
+  // the debounced folder cursor so rapid scrolling doesn't reset noteCursor
+  // many times per second.
   useEffect(() => {
     setNoteCursor(0);
-  }, [folderCursor, filter, sort]);
+  }, [debouncedFolderCursor, filter, sort]);
 
   // ── Visible notes (filter + sort) ───────────────────────────────────────
   const visibleNotes = useMemo(() => {
@@ -166,11 +174,24 @@ export const App = () => {
     [folders, folderCounts],
   );
 
+  // Cap the list passed to <select>: OpenTUI doesn't virtualize options, so
+  // every note in the array allocates text buffer space whether it's
+  // visible or not. After-sort top-N keeps the most relevant items.
+  const NOTE_RENDER_CAP = 500;
+  const renderedNotes = useMemo(
+    () => visibleNotes.slice(0, NOTE_RENDER_CAP),
+    [visibleNotes],
+  );
+  const hiddenNotesCount = Math.max(
+    0,
+    visibleNotes.length - renderedNotes.length,
+  );
+
   const noteOptions: SelectOption[] = useMemo(() => {
     // Only show the [ ]/[x] column once the user has started marking; until
     // then, titles render unprefixed (matches Apple Notes' default).
     const showMarkColumn = marked.size > 0;
-    return visibleNotes.map((n) => {
+    return renderedNotes.map((n) => {
       const prefix = showMarkColumn
         ? `${marked.has(n.id) ? "[x]" : "[ ]"} `
         : "";
@@ -183,7 +204,7 @@ export const App = () => {
         value: n.id,
       };
     });
-  }, [visibleNotes, marked, snippetCache]);
+  }, [renderedNotes, marked, snippetCache]);
 
   // ── Actions ─────────────────────────────────────────────────────────────
   const { enterMoveMode, performMove } = useMoveAction({
@@ -448,7 +469,7 @@ export const App = () => {
           onMouseDown={makeOptionClickHandler(
             noteSelectRef.current,
             noteScrollOffset,
-            visibleNotes.length,
+            renderedNotes.length,
             NOTE_LINES_PER_ITEM,
             (i) => {
               setNoteCursor(i);
@@ -456,9 +477,10 @@ export const App = () => {
             },
           )}
           onMouseScroll={makeWheelScrollHandler(
-            visibleNotes.length,
+            renderedNotes.length,
             setNoteCursor,
           )}
+          hiddenCount={hiddenNotesCount}
         />
 
         <PreviewPane

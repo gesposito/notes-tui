@@ -22,16 +22,23 @@ export interface MoveResult {
 }
 
 export interface NotesBackend {
+  /**
+   * Read-path methods accept an optional `AbortSignal`; passing one kills
+   * the underlying osascript subprocess if the caller no longer cares
+   * about the result (e.g., the user moved the cursor before the fetch
+   * completed). Write methods deliberately don't accept a signal — we
+   * never want to abort a half-done move/create/edit.
+   */
   /** Folders + their direct note counts. Fast: no per-note fetches. */
-  listFolders(): Promise<Folder[]>;
+  listFolders(signal?: AbortSignal): Promise<Folder[]>;
   /**
    * Per-folder note metadata (id/title/date). One backend call regardless of
    * how many folders. Returns the merged list; use n.folderId to group.
    */
-  getFolderNotes(folderIds: string[]): Promise<Note[]>;
-  getNoteBody(noteId: string): Promise<string>;
+  getFolderNotes(folderIds: string[], signal?: AbortSignal): Promise<Note[]>;
+  getNoteBody(noteId: string, signal?: AbortSignal): Promise<string>;
   /** Returns the HTML body (richer than plaintext — preserves checklists). */
-  getNoteHtml(noteId: string): Promise<string>;
+  getNoteHtml(noteId: string, signal?: AbortSignal): Promise<string>;
   /**
    * Replace a note's body. `body` is plain text; this wraps each line in
    * `<div>` so Apple Notes preserves line breaks. Title regenerates from
@@ -45,6 +52,7 @@ export interface NotesBackend {
    */
   getFolderSnippets(
     folderIds: string[],
+    signal?: AbortSignal,
   ): Promise<Record<string, Record<string, string>>>;
   moveNotes(
     moves: Array<{ noteId: string; folderId: string }>,

@@ -14,31 +14,46 @@ const dedupeById = <T extends { id: string }>(items: T[]): T[] => {
   return out;
 };
 
+const abortError = (): Error => {
+  const e = new Error("aborted");
+  e.name = "AbortError";
+  return e;
+};
+
 async function osascript(
   script: string,
   lang: "AppleScript" | "JavaScript" = "JavaScript",
+  signal?: AbortSignal,
 ): Promise<string> {
+  if (signal?.aborted) throw abortError();
   const args = lang === "JavaScript" ? ["-l", "JavaScript", "-"] : ["-"];
   const proc = Bun.spawn(["osascript", ...args], {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
-  proc.stdin.write(script);
-  await proc.stdin.end();
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (code !== 0) {
-    throw new Error(`osascript failed (exit ${code}): ${err.trim()}`);
+  const onAbort = () => proc.kill();
+  signal?.addEventListener("abort", onAbort);
+  try {
+    proc.stdin.write(script);
+    await proc.stdin.end();
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    if (signal?.aborted) throw abortError();
+    if (code !== 0) {
+      throw new Error(`osascript failed (exit ${code}): ${err.trim()}`);
+    }
+    return out;
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
-  return out;
 }
 
 export const osascriptBackend: NotesBackend = {
-  async listFolders(): Promise<Folder[]> {
+  async listFolders(signal?: AbortSignal): Promise<Folder[]> {
     // Lazy strategy: fetch folders + counts only. No per-note metadata yet.
     // Per folder events: container() (~38ms) + notes.length (~10ms) ≈ 48ms.
     // For 43 folders ≈ 2000ms, vs old listAll ≈ 5400ms.
@@ -119,10 +134,15 @@ export const osascriptBackend: NotesBackend = {
       });
       JSON.stringify(out);
     `;
-    return dedupeById(JSON.parse(await osascript(script)) as Folder[]);
+    return dedupeById(
+      JSON.parse(await osascript(script, "JavaScript", signal)) as Folder[],
+    );
   },
 
-  async getFolderNotes(folderIds: string[]): Promise<Note[]> {
+  async getFolderNotes(
+    folderIds: string[],
+    signal?: AbortSignal,
+  ): Promise<Note[]> {
     if (folderIds.length === 0) return [];
     // Per folder: 3 bulk events (id, name, modificationDate).
     const idsJson = JSON.stringify(folderIds);
@@ -151,29 +171,32 @@ export const osascriptBackend: NotesBackend = {
       }
       JSON.stringify(out);
     `;
-    return dedupeById(JSON.parse(await osascript(script)) as Note[]);
+    return dedupeById(
+      JSON.parse(await osascript(script, "JavaScript", signal)) as Note[],
+    );
   },
 
-  async getNoteBody(noteId: string): Promise<string> {
+  async getNoteBody(noteId: string, signal?: AbortSignal): Promise<string> {
     const script = `
       const Notes = Application("Notes");
       const note = Notes.notes.byId(${JSON.stringify(noteId)});
       note.plaintext();
     `;
-    return await osascript(script);
+    return await osascript(script, "JavaScript", signal);
   },
 
-  async getNoteHtml(noteId: string): Promise<string> {
+  async getNoteHtml(noteId: string, signal?: AbortSignal): Promise<string> {
     const script = `
       const Notes = Application("Notes");
       const note = Notes.notes.byId(${JSON.stringify(noteId)});
       note.body();
     `;
-    return await osascript(script);
+    return await osascript(script, "JavaScript", signal);
   },
 
   async getFolderSnippets(
     folderIds: string[],
+    signal?: AbortSignal,
   ): Promise<Record<string, Record<string, string>>> {
     if (folderIds.length === 0) return {};
     const idsJson = JSON.stringify(folderIds);

@@ -78,16 +78,34 @@ class ScriptingBridgeBackend implements NotesBackend {
     this.proc = null;
   }
 
-  private async call<T>(method: string, params?: unknown): Promise<T> {
+  private async call<T>(
+    method: string,
+    params?: unknown,
+    signal?: AbortSignal,
+  ): Promise<T> {
     await this.ensureProc();
     const proc = this.proc;
     if (!proc) throw new Error("notes-bridge helper not running");
+    if (signal?.aborted) {
+      const e = new Error("aborted");
+      e.name = "AbortError";
+      throw e;
+    }
     const id = this.nextId++;
     const promise = new Promise<T>((resolve, reject) => {
       this.pending.set(id, {
         resolve: (v) => resolve(v as T),
         reject,
       });
+      if (signal) {
+        const onAbort = () => {
+          this.pending.delete(id);
+          const e = new Error("aborted");
+          e.name = "AbortError";
+          reject(e);
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
     });
     proc.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
     proc.stdin.flush();
@@ -105,14 +123,17 @@ class ScriptingBridgeBackend implements NotesBackend {
 
   async getFolderSnippets(
     folderIds: string[],
+    signal?: AbortSignal,
   ): Promise<Record<string, Record<string, string>>> {
     // Helper still takes a single folder per call; SB has no spawn cost so
     // we just fan out in parallel and assemble the same shape osa returns.
     const results = await Promise.all(
       folderIds.map((id) =>
-        this.call<Record<string, string>>("getFolderSnippets", {
-          folderId: id,
-        }),
+        this.call<Record<string, string>>(
+          "getFolderSnippets",
+          { folderId: id },
+          signal,
+        ),
       ),
     );
     const out: Record<string, Record<string, string>> = {};
@@ -122,12 +143,12 @@ class ScriptingBridgeBackend implements NotesBackend {
     return out;
   }
 
-  getNoteBody(noteId: string): Promise<string> {
-    return this.call("getNoteBody", { noteId });
+  getNoteBody(noteId: string, signal?: AbortSignal): Promise<string> {
+    return this.call("getNoteBody", { noteId }, signal);
   }
 
-  getNoteHtml(noteId: string): Promise<string> {
-    return this.call("getNoteHtml", { noteId });
+  getNoteHtml(noteId: string, signal?: AbortSignal): Promise<string> {
+    return this.call("getNoteHtml", { noteId }, signal);
   }
 
   moveNotes(
