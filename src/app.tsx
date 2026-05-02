@@ -21,6 +21,7 @@ import {
 } from "./lib/format.ts";
 import {
   descendantIdSet,
+  foldersEqual,
   recursiveFolderCounts,
 } from "./lib/folder-tree.ts";
 import {
@@ -33,6 +34,7 @@ import { useFolderSnippets } from "./hooks/use-folder-snippets.ts";
 import { useNotePreview } from "./hooks/use-note-preview.ts";
 import { useMoveAction } from "./hooks/use-move-action.ts";
 import { useAppKeybindings } from "./hooks/use-app-keybindings.ts";
+import { usePollRefresh } from "./hooks/use-poll-refresh.ts";
 import {
   usePaneViewport,
   useScrollOffset,
@@ -81,6 +83,13 @@ export const App = () => {
   const [helpOpen, setHelpOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [editBuffer, setEditBuffer] = useState("");
+  // Bumped on each successful refresh so useNotePreview re-fetches the body
+  // even when the highlighted noteId is unchanged.
+  const [previewBustToken, setPreviewBustToken] = useState(0);
+  // Set when the watcher fires while the user is mid-edit; banner shows
+  // until edit closes (save or cancel both reset it).
+  const [externalChangeDuringEdit, setExternalChangeDuringEdit] =
+    useState(false);
 
   // Surface backend errors as toast.
   useEffect(() => {
@@ -129,6 +138,7 @@ export const App = () => {
   const highlightedNote = visibleNotes[noteCursor];
   const { preview, loading: previewLoading } = useNotePreview(
     highlightedNote?.id,
+    previewBustToken,
   );
 
   // ── Refs for click-target geometry + edit buffer access ────────────────
@@ -190,6 +200,38 @@ export const App = () => {
     process.exit(0);
   };
 
+  const refresh = async (silent = false) => {
+    // Not in browse mode — surface the change rather than yanking the UI.
+    if (mode.kind !== "browse") {
+      if (mode.kind === "edit") {
+        // Persistent banner in the edit pane; auto-clears on save/cancel.
+        setExternalChangeDuringEdit(true);
+      } else if (!silent) {
+        // Manual `r` press in a transient mode: tell them why nothing happened.
+        setToast("Refresh deferred — exit current mode first");
+      }
+      return;
+    }
+    // Cheap first pass: pull fresh folders + counts and compare. Most polling
+    // ticks find nothing changed and we can skip the expensive per-folder
+    // invalidation entirely.
+    const before = folders;
+    const fresh = await reload();
+    if (!fresh) return;
+    if (foldersEqual(fresh, before)) {
+      if (!silent) setToast("Up to date");
+      return;
+    }
+    invalidateNotes(activeFolderIds);
+    invalidateSnippets(activeFolderIds);
+    setPreviewBustToken((t) => t + 1);
+    if (!silent) setToast("Refreshed");
+  };
+
+  // Auto-refresh via polling. Picks up external changes (Notes.app saves,
+  // iCloud pulls) within the interval. Silent (no toast) so it doesn't spam.
+  usePollRefresh(() => refresh(true), 15_000);
+
   const newNote = async () => {
     if (!activeFolder) {
       setToast("Select a folder first");
@@ -242,6 +284,7 @@ export const App = () => {
     try {
       const plaintext = await notes.getNoteBody(highlightedNote.id);
       setEditBuffer(plaintext);
+      setExternalChangeDuringEdit(false);
       setMode({ kind: "edit", noteId: highlightedNote.id });
     } catch (e) {
       setToast(
@@ -252,6 +295,7 @@ export const App = () => {
 
   const cancelEdit = () => {
     setEditBuffer("");
+    setExternalChangeDuringEdit(false);
     setMode({ kind: "browse" });
   };
 
@@ -265,12 +309,14 @@ export const App = () => {
       await notes.updateNoteBody(noteId, content);
       setToast("Saved");
       setEditBuffer("");
+      setExternalChangeDuringEdit(false);
       setMode({ kind: "browse" });
       // Title may have changed (first line of body); refresh list + caches.
       if (highlightedNote) {
         invalidateNotes([highlightedNote.folderId]);
         invalidateSnippets([highlightedNote.folderId]);
       }
+      setPreviewBustToken((t) => t + 1);
       await reload();
     } catch (e) {
       setToast(
@@ -297,6 +343,7 @@ export const App = () => {
     saveEdit,
     cancelEdit,
     newNote,
+    refresh: () => refresh(false),
     quit,
   });
 
@@ -416,13 +463,14 @@ export const App = () => {
           editing={mode.kind === "edit"}
           initialEditValue={editBuffer}
           textareaRef={textareaRef}
+          externalChangePending={externalChangeDuringEdit}
         />
       </box>
 
       <box>
         <text fg="#777">
           {mode.kind === "browse" &&
-            "↑↓ nav · Tab switch · n new note · N new folder · Space mark · m move · / filter · s sort · ? help · q quit"}
+            "↑↓ nav · Tab switch · n new note · N new folder · m move · / filter · s sort · r refresh · ? help · q quit"}
           {mode.kind === "moveTarget" &&
             "Pick destination · ↑↓ nav · Enter move · Esc cancel"}
           {mode.kind === "filter" &&
@@ -430,7 +478,7 @@ export const App = () => {
           {mode.kind === "newFolder" &&
             "New folder · type name · Enter create · Esc cancel"}
           {mode.kind === "edit" &&
-            "Edit note · type to change · Ctrl+S save · Esc cancel"}
+            "Edit note · Ctrl+S save (formatting lost) · Esc cancel"}
         </text>
       </box>
       {toast && <text fg="#33cc66">{toast}</text>}

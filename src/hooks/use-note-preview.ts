@@ -6,10 +6,15 @@ const PREVIEW_DEBOUNCE_MS = 150;
 
 /**
  * Debounced preview fetch. Pulls the HTML body and converts to terminal-
- * friendly text (with checklist markers, bullets, etc.). Sequence counter
- * discards stale responses on rapid cursor movement.
+ * friendly text. The optional `bustToken` is included in the dep array so
+ * a manual or auto refresh can force a re-fetch even when the highlighted
+ * note id is unchanged. Sequence counter discards stale responses on rapid
+ * cursor movement.
  */
-export const useNotePreview = (noteId: string | undefined) => {
+export const useNotePreview = (
+  noteId: string | undefined,
+  bustToken: number = 0,
+) => {
   const notes = useNotes();
   const [preview, setPreview] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -38,7 +43,7 @@ export const useNotePreview = (noteId: string | undefined) => {
       }
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [noteId, notes]);
+  }, [noteId, notes, bustToken]);
 
   return { preview, loading };
 };

@@ -21,6 +21,7 @@ type Deps = {
   saveEdit: () => void;
   cancelEdit: () => void;
   newNote: () => void;
+  refresh: () => void;
   quit: () => void;
 };
 
@@ -104,6 +105,10 @@ export const useAppKeybindings = (deps: Deps): void => {
     }
     if (key.name === "s") {
       deps.setSort(cycleSort);
+      return;
+    }
+    if (key.name === "r") {
+      deps.refresh();
       return;
     }
     // n / N (Shift+n): create note / folder. (Cmd+N in macOS terminals is

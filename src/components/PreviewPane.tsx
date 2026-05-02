@@ -12,6 +12,10 @@ type Props = {
   editing?: boolean;
   initialEditValue?: string;
   textareaRef?: RefObject<TextareaRenderable | null>;
+  // Set to true when the watcher detects an external change while the
+  // user is mid-edit. Renders a persistent warning banner so they know
+  // their save will overwrite.
+  externalChangePending?: boolean;
 };
 
 export const PreviewPane = ({
@@ -22,14 +26,26 @@ export const PreviewPane = ({
   editing,
   initialEditValue,
   textareaRef,
+  externalChangePending,
 }: Props) => (
   <box
     flexGrow={1}
     border
-    borderColor={editing ? "#e6c200" : "#555"}
+    borderColor={
+      editing && externalChangePending
+        ? "#ff6644"
+        : editing
+          ? "#e6c200"
+          : "#555"
+    }
     title={editing ? `${title}  [editing — Ctrl+S save · Esc cancel]` : title}
     flexDirection="column"
   >
+    {editing && externalChangePending && (
+      <text fg="#ff6644">
+        ⚠ External changes detected — Ctrl+S will overwrite them
+      </text>
+    )}
     {editing ? (
       <textarea
         ref={textareaRef}

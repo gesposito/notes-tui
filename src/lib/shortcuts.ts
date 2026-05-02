@@ -26,7 +26,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
     name: "Notes",
     bindings: [
       { key: "n", description: "New note in active folder" },
-      { key: "e", description: "Edit highlighted note (Ctrl+S to save, Esc to cancel)" },
+      { key: "e", description: "Edit (plain text only — formatting lost on save)" },
       { key: "Space", description: "Mark / unmark current note" },
       { key: "m", description: "Move marked notes (or current) to a folder" },
     ],
@@ -42,6 +42,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
     bindings: [
       { key: "/", description: "Filter notes by title" },
       { key: "s", description: "Cycle sort: date ↓ → date ↑ → title" },
+      { key: "r", description: "Refresh from Notes (pull external changes)" },
     ],
   },
   {

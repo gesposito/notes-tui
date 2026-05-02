@@ -6,7 +6,7 @@ import { scriptingBridgeBackend } from "./scripting-bridge.ts";
 
 // Backend selection: NOTES_BACKEND=scripting-bridge to use the long-lived
 // Swift helper (ScriptingBridge); anything else uses the osascript backend.
-const choice = process.env["NOTES_BACKEND"];
+const choice = Bun.env.NOTES_BACKEND;
 export const notes: NotesBackend =
   choice === "scripting-bridge" ? scriptingBridgeBackend : osascriptBackend;
 

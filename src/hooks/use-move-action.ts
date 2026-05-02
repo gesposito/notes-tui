@@ -13,7 +13,7 @@ type Deps = {
   setToast: (s: string) => void;
   invalidateNotes: (ids: Iterable<string>) => void;
   invalidateSnippets: (ids: Iterable<string>) => void;
-  reload: () => Promise<void>;
+  reload: () => Promise<unknown>;
 };
 
 /**

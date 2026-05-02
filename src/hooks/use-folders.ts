@@ -12,14 +12,16 @@ export const useFolders = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async (): Promise<void> => {
+  const reload = useCallback(async (): Promise<Folder[] | null> => {
     setLoading(true);
     setError(null);
     try {
       const f = await notes.listFolders();
       setFolders(f);
+      return f;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return null;
     } finally {
       setLoading(false);
     }

@@ -19,6 +19,33 @@ export const descendantIdSet = (
 };
 
 /**
+ * Shallow equality on the fields that affect what the UI shows: id (folder
+ * present), name + path (folder renamed/moved), noteCount (notes added or
+ * removed). Used by `refresh()` to skip the expensive per-folder cache
+ * invalidation when nothing visibly changed.
+ *
+ * Note: doesn't catch within-folder note edits (title/body changes that
+ * leave the count the same). For that you'd need to compare per-folder
+ * note metadata, which is what the cache invalidation does anyway.
+ */
+export const foldersEqual = (a: Folder[], b: Folder[]): boolean => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!;
+    const y = b[i]!;
+    if (
+      x.id !== y.id ||
+      x.noteCount !== y.noteCount ||
+      x.name !== y.name ||
+      x.path !== y.path
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
  * Recursive note counts: each folder's total = its own direct count + the
  * direct counts of every descendant. O(F²); fine for hundreds of folders.
  */
