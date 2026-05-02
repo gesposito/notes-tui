@@ -11,7 +11,9 @@ import {
   useRenderer,
   useTerminalDimensions,
 } from "@opentui/react";
-import { type Folder, type Note, notes } from "./notes/index.ts";
+import type { Folder, Note } from "./notes/index.ts";
+import { notes as defaultBackend } from "./notes/index.ts";
+import { NotesProvider, useNotes } from "./notes/context.tsx";
 
 type Pane = "folders" | "notes";
 type Mode =
@@ -67,7 +69,8 @@ const formatFolderOptionName = (
   return truncated + " ".repeat(padding) + countText;
 };
 
-const App = () => {
+export const App = () => {
+  const notes = useNotes();
   const renderer = useRenderer();
   const { height: termHeight } = useTerminalDimensions();
   // Approx visible rows per pane: terminal height minus borders, title, footer, toast.
@@ -727,5 +730,13 @@ const App = () => {
   );
 };
 
-const renderer = await createCliRenderer({ screenMode: "alternate-screen" });
-createRoot(renderer).render(<App />);
+// Only spin up the renderer when this file is the entry point; tests can
+// import App without triggering a real terminal session.
+if (import.meta.main) {
+  const renderer = await createCliRenderer({ screenMode: "alternate-screen" });
+  createRoot(renderer).render(
+    <NotesProvider backend={defaultBackend}>
+      <App />
+    </NotesProvider>,
+  );
+}
