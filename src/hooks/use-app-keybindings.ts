@@ -22,7 +22,8 @@ type Deps = {
   cancelEdit: () => void;
   newNote: () => void;
   refresh: () => void;
-  toggleRecursiveView: () => void;
+  expandFolder: () => void;
+  collapseOrParent: () => void;
   quit: () => void;
 };
 
@@ -118,12 +119,6 @@ export const useAppKeybindings = (deps: Deps): void => {
       deps.refresh();
       return;
     }
-    // Toggle whether selecting a parent folder includes notes from
-    // descendant folders.
-    if (key.name === "t") {
-      deps.toggleRecursiveView();
-      return;
-    }
     // n / N (Shift+n): create note / folder. (Cmd+N in macOS terminals is
     // intercepted by the terminal itself, so we use the bare letters per
     // TUI convention.)
@@ -131,6 +126,20 @@ export const useAppKeybindings = (deps: Deps): void => {
       if (key.shift) deps.enterNewFolder();
       else deps.newNote();
       return;
+    }
+
+    // Folder-pane bindings: tree expand/collapse with ←/→. Right expands a
+    // collapsed parent; left collapses an expanded parent or jumps to the
+    // parent row. Must run before the notes-pane gate below.
+    if (deps.focused === "folders") {
+      if (key.name === "right") {
+        deps.expandFolder();
+        return;
+      }
+      if (key.name === "left") {
+        deps.collapseOrParent();
+        return;
+      }
     }
 
     // Notes-pane-only bindings below this line

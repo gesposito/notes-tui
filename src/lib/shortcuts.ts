@@ -35,6 +35,8 @@ export const SHORTCUTS: ShortcutGroup[] = [
     name: "Folders",
     bindings: [
       { key: "N (Shift+n)", description: "New Folder (in active account)" },
+      { key: "→", description: "Expand folder" },
+      { key: "←", description: "Collapse folder (or jump to parent)" },
     ],
   },
   {
@@ -46,10 +48,6 @@ export const SHORTCUTS: ShortcutGroup[] = [
       },
       { key: "s", description: "Sort By… (Date Modified ↓ / ↑ / Title)" },
       { key: "r", description: "Refresh (pull external changes)" },
-      {
-        key: "t",
-        description: "Toggle subfolder notes (off = current folder only)",
-      },
     ],
   },
   {

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotes } from "../notes/context.tsx";
-import { htmlToTerminalText } from "../lib/render-html.ts";
 import { LRU } from "../lib/lru.ts";
 
 const PREVIEW_DEBOUNCE_MS = 300;
@@ -9,13 +8,16 @@ const PREVIEW_CACHE_CAP = 200;
 /**
  * Debounced + cached preview fetch. On cursor change:
  *   - Cache hit: instant; no debounce, no fetch.
- *   - Cache miss: 300 ms debounce, then `getNoteHtml`, store result.
+ *   - Cache miss: 300 ms debounce, then `getNoteBody` (plaintext), cache it.
  *
- * `bustToken` invalidates the entire cache (called on manual/auto refresh
- * and after edits, so an externally-changed note gets re-fetched).
+ * Plaintext (vs the HTML body) is roughly 10× faster on Apple's side —
+ * `note.body()` re-renders the rich representation each call (~1.4 s),
+ * `note.plaintext()` extracts text without re-rendering (~150 ms). For a
+ * terminal preview we don't get value from the HTML structure anyway.
  *
- * Sequence counter discards stale-response setState; the cache write is
- * unconditional so revisits are still fast even for once-stale fetches.
+ * `bustToken` invalidates the entire cache. Sequence counter discards
+ * stale-response setState; cache writes are unconditional so revisits are
+ * still fast even for once-stale fetches.
  */
 export const useNotePreview = (
   noteId: string | undefined,
@@ -49,11 +51,10 @@ export const useNotePreview = (
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const html = await notes.getNoteHtml(noteId, controller.signal);
-        const rendered = htmlToTerminalText(html);
-        cacheRef.current.set(noteId, rendered);
+        const text = await notes.getNoteBody(noteId, controller.signal);
+        cacheRef.current.set(noteId, text);
         if (seq.current === mySeq) {
-          setPreview(rendered);
+          setPreview(text);
           setLoading(false);
         }
       } catch (e) {

@@ -34,7 +34,6 @@ import { useFolderSnippets } from "./hooks/use-folder-snippets.ts";
 import { useNotePreview } from "./hooks/use-note-preview.ts";
 import { useMoveAction } from "./hooks/use-move-action.ts";
 import { useAppKeybindings } from "./hooks/use-app-keybindings.ts";
-import { usePollRefresh } from "./hooks/use-poll-refresh.ts";
 import {
   usePaneViewport,
   useScrollOffset,
@@ -54,28 +53,76 @@ export const App = () => {
 
   // ── Folder state ────────────────────────────────────────────────────────
   const { folders, loading, error, reload } = useFolders();
-  const [folderCursor, setFolderCursor] = useState(0);
-  // When true, selecting a parent folder also shows notes from its
-  // descendant folders (Apple-Notes "Show all in folder" behavior).
-  // When false, only direct notes of the active folder appear.
-  const [recursiveView, setRecursiveView] = useState(true);
   const folderById = useMemo(() => {
     const m = new Map<string, Folder>();
     for (const f of folders) m.set(f.id, f);
     return m;
   }, [folders]);
+  const folderByPath = useMemo(() => {
+    const m = new Map<string, Folder>();
+    for (const f of folders) m.set(f.path, f);
+    return m;
+  }, [folders]);
   const folderCounts = useMemo(() => recursiveFolderCounts(folders), [folders]);
-  // The folder Select gets the immediate `folderCursor` so navigation feels
-  // instant; downstream effects (lazy notes/snippets fetches, preview) drive
-  // off the debounced value so blasting through folders doesn't fan out
-  // dozens of in-flight osascript spawns.
+
+  // Folders with at least one child (drives the ▸/▾ disclosure markers).
+  const foldersWithChildren = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of folders) {
+      if (f.depth === 0) continue;
+      const idx = f.path.lastIndexOf(" / ");
+      if (idx <= 0) continue;
+      const parent = folderByPath.get(f.path.substring(0, idx));
+      if (parent) set.add(parent.id);
+    }
+    return set;
+  }, [folders, folderByPath]);
+
+  // Tree expansion state. Default: all collapsed (top-level only visible).
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set(),
+  );
+
+  // A folder is visible if every ancestor is expanded.
+  const visibleFolders = useMemo(() => {
+    return folders.filter((f) => {
+      let current: Folder | undefined = f;
+      while (current && current.depth > 0) {
+        const idx = current.path.lastIndexOf(" / ");
+        if (idx <= 0) return false;
+        const parent = folderByPath.get(current.path.substring(0, idx));
+        if (!parent || !expandedFolders.has(parent.id)) return false;
+        current = parent;
+      }
+      return true;
+    });
+  }, [folders, folderByPath, expandedFolders]);
+
+  // Active folder tracked by id so expand/collapse doesn't shift selection.
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const folderCursor = useMemo(() => {
+    if (!activeFolderId) return 0;
+    const idx = visibleFolders.findIndex((f) => f.id === activeFolderId);
+    return idx >= 0 ? idx : 0;
+  }, [visibleFolders, activeFolderId]);
+  // Debounced cursor (150 ms) drives the lazy fetches so fast scrolling
+  // doesn't fan out spawns. Folder Select gets the immediate value.
   const debouncedFolderCursor = useDebouncedValue(folderCursor, 150);
-  const activeFolder = folders[debouncedFolderCursor];
+  const activeFolder = visibleFolders[debouncedFolderCursor];
+  // What's in the notes pane:
+  //   - leaf folder, or expanded parent → just that folder's direct notes
+  //     (children are reachable separately, so showing their notes here would
+  //     duplicate what the user already sees in the tree)
+  //   - collapsed parent → aggregate the whole subtree, since the children
+  //     are hidden and otherwise their notes would be unreachable
   const activeFolderIds = useMemo(() => {
     if (!activeFolder) return new Set<string>();
-    if (!recursiveView) return new Set([activeFolder.id]);
+    const hasChildren = foldersWithChildren.has(activeFolder.id);
+    if (!hasChildren || expandedFolders.has(activeFolder.id)) {
+      return new Set([activeFolder.id]);
+    }
     return descendantIdSet(activeFolder, folders);
-  }, [activeFolder, folders, recursiveView]);
+  }, [activeFolder, foldersWithChildren, expandedFolders, folders]);
 
   // ── Notes / snippets / preview ──────────────────────────────────────────
   const { notesByFolder, invalidate: invalidateNotes, error: notesError } =
@@ -139,7 +186,7 @@ export const App = () => {
   const folderScrollOffset = useScrollOffset(
     folderCursor,
     folderVisibleRows,
-    folders.length,
+    visibleFolders.length,
   );
   const noteScrollOffset = useScrollOffset(
     noteCursor,
@@ -162,16 +209,26 @@ export const App = () => {
   // ── SelectOptions ───────────────────────────────────────────────────────
   const folderOptions: SelectOption[] = useMemo(
     () =>
-      folders.map((f) => ({
-        name: formatFolderOptionName(
-          "  ".repeat(f.depth),
-          f.name,
-          folderCounts[f.id] ?? 0,
-        ),
-        description: "",
-        value: f.id,
-      })),
-    [folders, folderCounts],
+      visibleFolders.map((f) => {
+        const hasChildren = foldersWithChildren.has(f.id);
+        const isExpanded = hasChildren && expandedFolders.has(f.id);
+        const marker = hasChildren ? (isExpanded ? "▾ " : "▸ ") : "  ";
+        // When expanded, child rows show their own counts beside the parent,
+        // so showing the recursive total here would double-count. Collapse
+        // it back to the direct count. Collapsed parents and leaves keep
+        // the recursive total so the user knows what's hidden.
+        const count = isExpanded ? f.noteCount : (folderCounts[f.id] ?? 0);
+        return {
+          name: formatFolderOptionName(
+            "  ".repeat(f.depth) + marker,
+            f.name,
+            count,
+          ),
+          description: "",
+          value: f.id,
+        };
+      }),
+    [visibleFolders, foldersWithChildren, expandedFolders, folderCounts],
   );
 
   // Cap the list passed to <select>: OpenTUI doesn't virtualize options, so
@@ -254,10 +311,6 @@ export const App = () => {
     if (!silent) setToast("Refreshed");
   };
 
-  // Auto-refresh via polling. Picks up external changes (Notes.app saves,
-  // iCloud pulls) within the interval. Silent (no toast) so it doesn't spam.
-  usePollRefresh(() => refresh(true), 15_000);
-
   const newNote = async () => {
     if (!activeFolder) {
       setToast("Select a folder first");
@@ -325,6 +378,35 @@ export const App = () => {
     setMode({ kind: "browse" });
   };
 
+  const expandFolder = () => {
+    if (!activeFolder || !foldersWithChildren.has(activeFolder.id)) return;
+    if (expandedFolders.has(activeFolder.id)) return;
+    setExpandedFolders((s) => {
+      const next = new Set(s);
+      next.add(activeFolder.id);
+      return next;
+    });
+  };
+
+  // Left arrow: collapse the active folder if it's expanded; otherwise jump
+  // to the parent. Mirrors how Finder/Files apps handle ← in tree views.
+  const collapseOrParent = () => {
+    if (!activeFolder) return;
+    if (expandedFolders.has(activeFolder.id)) {
+      setExpandedFolders((s) => {
+        const next = new Set(s);
+        next.delete(activeFolder.id);
+        return next;
+      });
+      return;
+    }
+    if (activeFolder.depth === 0) return;
+    const idx = activeFolder.path.lastIndexOf(" / ");
+    if (idx <= 0) return;
+    const parent = folderByPath.get(activeFolder.path.substring(0, idx));
+    if (parent) setActiveFolderId(parent.id);
+  };
+
   const saveEdit = async () => {
     if (mode.kind !== "edit") return;
     const noteId = mode.noteId;
@@ -370,7 +452,8 @@ export const App = () => {
     cancelEdit,
     newNote,
     refresh: () => refresh(false),
-    toggleRecursiveView: () => setRecursiveView((r) => !r),
+    expandFolder,
+    collapseOrParent,
     quit,
   });
 
@@ -412,7 +495,7 @@ export const App = () => {
     ? `Move To…  (${mode.sourceCount} Note${mode.sourceCount === 1 ? "" : "s"})`
     : "Folders";
   const noteTitle =
-    `Notes [${SORT_LABEL[sort]}${recursiveView ? "" : " · Direct"}]` +
+    `Notes [${SORT_LABEL[sort]}]` +
     `${marked.size > 0 ? `  (${marked.size} Selected)` : ""}` +
     `${activeFolder ? `  —  ${activeFolder.path}` : ""}`;
   const previewTitle = highlightedNote?.title || "Preview";
@@ -428,9 +511,14 @@ export const App = () => {
           borderColor={folderBorderColor}
           pageStep={pageStep}
           selectRef={folderSelectRef}
-          onChange={setFolderCursor}
+          onChange={(i) => {
+            const f = visibleFolders[i];
+            if (f) setActiveFolderId(f.id);
+          }}
           onSelect={(i) => {
             if (moveTargetMode) {
+              // Move-target mode lists every folder (no tree filtering),
+              // so we still index into `folders` here.
               const target = folders[i];
               if (target) void performMove(target, mode.sourceAccount);
             } else {
@@ -440,16 +528,21 @@ export const App = () => {
           onMouseDown={makeOptionClickHandler(
             folderSelectRef.current,
             folderScrollOffset,
-            folders.length,
+            visibleFolders.length,
             1,
             (i) => {
-              setFolderCursor(i);
+              const f = visibleFolders[i];
+              if (f) setActiveFolderId(f.id);
               setFocused("folders");
             },
           )}
           onMouseScroll={makeWheelScrollHandler(
-            folders.length,
-            setFolderCursor,
+            visibleFolders.length,
+            (updater) => {
+              const next = updater(folderCursor);
+              const f = visibleFolders[next];
+              if (f) setActiveFolderId(f.id);
+            },
           )}
         />
 
@@ -498,7 +591,7 @@ export const App = () => {
       <box>
         <text fg="#777">
           {mode.kind === "browse" &&
-            "↑↓ Nav · Tab Switch · n New Note · N New Folder · m Move To… · f Search · s Sort · t Subfolders · r Refresh · ? Help · q Quit"}
+            "↑↓ Nav · ←/→ Collapse/Expand · Tab Switch · n New Note · N New Folder · m Move To… · f Search · s Sort · r Refresh · ? Help · q Quit"}
           {mode.kind === "moveTarget" &&
             "Move To… · ↑↓ Pick destination · Enter Move · Esc Cancel"}
           {mode.kind === "filter" &&
