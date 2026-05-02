@@ -54,6 +54,10 @@ export const App = () => {
   // ── Folder state ────────────────────────────────────────────────────────
   const { folders, loading, error, reload } = useFolders();
   const [folderCursor, setFolderCursor] = useState(0);
+  // When true, selecting a parent folder also shows notes from its
+  // descendant folders (Apple-Notes "Show all in folder" behavior).
+  // When false, only direct notes of the active folder appear.
+  const [recursiveView, setRecursiveView] = useState(true);
   const folderById = useMemo(() => {
     const m = new Map<string, Folder>();
     for (const f of folders) m.set(f.id, f);
@@ -61,10 +65,11 @@ export const App = () => {
   }, [folders]);
   const folderCounts = useMemo(() => recursiveFolderCounts(folders), [folders]);
   const activeFolder = folders[folderCursor];
-  const activeFolderIds = useMemo(
-    () => descendantIdSet(activeFolder, folders),
-    [activeFolder, folders],
-  );
+  const activeFolderIds = useMemo(() => {
+    if (!activeFolder) return new Set<string>();
+    if (!recursiveView) return new Set([activeFolder.id]);
+    return descendantIdSet(activeFolder, folders);
+  }, [activeFolder, folders, recursiveView]);
 
   // ── Notes / snippets / preview ──────────────────────────────────────────
   const { notesByFolder, invalidate: invalidateNotes, error: notesError } =
@@ -344,6 +349,7 @@ export const App = () => {
     cancelEdit,
     newNote,
     refresh: () => refresh(false),
+    toggleRecursiveView: () => setRecursiveView((r) => !r),
     quit,
   });
 
@@ -385,7 +391,7 @@ export const App = () => {
     ? `Move To…  (${mode.sourceCount} Note${mode.sourceCount === 1 ? "" : "s"})`
     : "Folders";
   const noteTitle =
-    `Notes [${SORT_LABEL[sort]}]` +
+    `Notes [${SORT_LABEL[sort]}${recursiveView ? "" : " · Direct"}]` +
     `${marked.size > 0 ? `  (${marked.size} Selected)` : ""}` +
     `${activeFolder ? `  —  ${activeFolder.path}` : ""}`;
   const previewTitle = highlightedNote?.title || "Preview";
@@ -470,7 +476,7 @@ export const App = () => {
       <box>
         <text fg="#777">
           {mode.kind === "browse" &&
-            "↑↓ Nav · Tab Switch · n New Note · N New Folder · m Move To… · f Search · s Sort · r Refresh · ? Help · q Quit"}
+            "↑↓ Nav · Tab Switch · n New Note · N New Folder · m Move To… · f Search · s Sort · t Subfolders · r Refresh · ? Help · q Quit"}
           {mode.kind === "moveTarget" &&
             "Move To… · ↑↓ Pick destination · Enter Move · Esc Cancel"}
           {mode.kind === "filter" &&

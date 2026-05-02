@@ -22,6 +22,7 @@ type Deps = {
   cancelEdit: () => void;
   newNote: () => void;
   refresh: () => void;
+  toggleRecursiveView: () => void;
   quit: () => void;
 };
 
@@ -115,6 +116,12 @@ export const useAppKeybindings = (deps: Deps): void => {
     }
     if (key.name === "r") {
       deps.refresh();
+      return;
+    }
+    // Toggle whether selecting a parent folder includes notes from
+    // descendant folders.
+    if (key.name === "t") {
+      deps.toggleRecursiveView();
       return;
     }
     // n / N (Shift+n): create note / folder. (Cmd+N in macOS terminals is

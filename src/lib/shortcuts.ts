@@ -46,6 +46,10 @@ export const SHORTCUTS: ShortcutGroup[] = [
       },
       { key: "s", description: "Sort By… (Date Modified ↓ / ↑ / Title)" },
       { key: "r", description: "Refresh (pull external changes)" },
+      {
+        key: "t",
+        description: "Toggle subfolder notes (off = current folder only)",
+      },
     ],
   },
   {
