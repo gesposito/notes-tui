@@ -7,7 +7,9 @@
     "start": "bun run src/app.tsx",
     "dev": "bun --watch src/app.tsx",
     "typecheck": "tsc --noEmit",
-    "build": "bun build --compile src/app.tsx --outfile notes-tui"
+    "build": "bun build --compile src/app.tsx --outfile notes-tui",
+    "build:helper": "swiftc -O helper/main.swift -framework ScriptingBridge -framework Foundation -o helper/notes-bridge",
+    "start:bridge": "NOTES_BACKEND=scripting-bridge bun run src/app.tsx"
   },
   "devDependencies": {
     "@types/bun": "latest",

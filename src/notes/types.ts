@@ -22,12 +22,23 @@ export interface MoveResult {
 }
 
 export interface NotesBackend {
+  /**
+   * Combined fetch: returns both folders and notes in a single backend call.
+   * Cheaper than `Promise.all([listFolders(), listNotes()])` for osa (one
+   * spawn, shared per-folder iteration, app-level note-metadata bulk).
+   */
+  listAll(): Promise<{ folders: Folder[]; notes: Note[] }>;
   listFolders(): Promise<Folder[]>;
   listNotes(): Promise<Note[]>;
   moveNotes(
     moves: Array<{ noteId: string; folderId: string }>,
   ): Promise<MoveResult[]>;
   getNoteBody(noteId: string): Promise<string>;
-  /** Map of noteId → snippet (line-after-title) for every note in the folder. */
-  getFolderSnippets(folderId: string): Promise<Record<string, string>>;
+  /**
+   * Batched snippet fetch. Returns `{ folderId: { noteId: snippet } }` for every
+   * requested folder. One backend call regardless of how many folders.
+   */
+  getFolderSnippets(
+    folderIds: string[],
+  ): Promise<Record<string, Record<string, string>>>;
 }

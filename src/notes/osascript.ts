@@ -38,6 +38,130 @@ async function osascript(
 }
 
 export const osascriptBackend: NotesBackend = {
+  async listAll(): Promise<{ folders: Folder[]; notes: Note[] }> {
+    // Single osa spawn, single per-folder loop. Combines:
+    //   - account & folder enumeration (bulk per account)
+    //   - per-folder container() lookup (unavoidable for depth/path)
+    //   - per-folder folder.notes.id() (just for noteId→folderId map)
+    //   - app-level Notes.notes.{id,name,modificationDate}() bulk (3 events
+    //     for ALL notes' metadata regardless of count)
+    const script = `
+      function compute(node, byId, accountSet) {
+        if (!node || node._computed) return node;
+        var pid = node.parentId;
+        if (accountSet.has(pid) || !byId[pid]) {
+          node.depth = 0;
+          node.path = node.account + " / " + node.name;
+        } else {
+          var p = compute(byId[pid], byId, accountSet);
+          node.depth = p.depth + 1;
+          node.path = p.path + " / " + node.name;
+        }
+        node._computed = true;
+        return node;
+      }
+
+      const Notes = Application("Notes");
+      const accounts = Notes.accounts();
+      const accountSet = new Set();
+      for (var i = 0; i < accounts.length; i++) {
+        accountSet.add(accounts[i].id());
+      }
+
+      const folderInfo = {};        // id -> { name, parentId, account, ... }
+      const orderedFolderIds = [];
+      const noteToFolder = {};
+      for (var i = 0; i < accounts.length; i++) {
+        const account = accounts[i];
+        const accountName = account.name();
+        const accountId = account.id();
+        const folders = account.folders();
+        const folderIds = account.folders.id();
+        const folderNames = account.folders.name();
+        for (var j = 0; j < folders.length; j++) {
+          const folder = folders[j];
+          const fid = folderIds[j];
+          let pid = accountId;
+          try {
+            const cont = folder.container();
+            if (cont) pid = cont.id();
+          } catch (e) {}
+          folderInfo[fid] = {
+            name: folderNames[j],
+            parentId: pid,
+            account: accountName,
+            depth: 0,
+            path: "",
+            _computed: false,
+          };
+          orderedFolderIds.push(fid);
+          // Build noteId -> folderId map. One event per folder; still N events
+          // total but no name/date here (those come bulk at app level below).
+          const folderNoteIds = folder.notes.id();
+          for (var k = 0; k < folderNoteIds.length; k++) {
+            noteToFolder[folderNoteIds[k]] = fid;
+          }
+        }
+      }
+
+      // Compute folder depth/path
+      for (var i = 0; i < orderedFolderIds.length; i++) {
+        compute(folderInfo[orderedFolderIds[i]], folderInfo, accountSet);
+      }
+
+      const foldersOut = [];
+      for (var i = 0; i < orderedFolderIds.length; i++) {
+        const id = orderedFolderIds[i];
+        const n = folderInfo[id];
+        foldersOut.push({
+          id: id,
+          name: n.name,
+          account: n.account,
+          path: n.path,
+          depth: n.depth,
+        });
+      }
+      foldersOut.sort(function (a, b) {
+        const ap = a.path.toLowerCase();
+        const bp = b.path.toLowerCase();
+        return ap < bp ? -1 : ap > bp ? 1 : 0;
+      });
+
+      // App-level note metadata: 3 Apple Events for every note in the library.
+      const allNoteIds = Notes.notes.id();
+      const allNoteNames = Notes.notes.name();
+      const allNoteDates = Notes.notes.modificationDate();
+
+      const notesOut = [];
+      for (var k = 0; k < allNoteIds.length; k++) {
+        const nid = allNoteIds[k];
+        const fid = noteToFolder[nid];
+        const finfo = folderInfo[fid];
+        const account = finfo ? finfo.account : "";
+        const folderName = finfo ? finfo.name : "";
+        const d = allNoteDates[k];
+        notesOut.push({
+          id: nid,
+          title: allNoteNames[k],
+          folderId: fid || "",
+          folderPath: account + " / " + folderName,
+          account: account,
+          modifiedAt: d ? d.toISOString() : null,
+        });
+      }
+
+      JSON.stringify({ folders: foldersOut, notes: notesOut });
+    `;
+    const parsed = JSON.parse(await osascript(script)) as {
+      folders: Folder[];
+      notes: Note[];
+    };
+    return {
+      folders: dedupeById(parsed.folders),
+      notes: dedupeById(parsed.notes),
+    };
+  },
+
   async listFolders(): Promise<Folder[]> {
     // account.folders returns every folder in the account flat (regardless of
     // nesting). Hierarchy is reconstructed via folder.container (the parent
@@ -148,25 +272,41 @@ export const osascriptBackend: NotesBackend = {
     return dedupeById(JSON.parse(await osascript(script)) as Note[]);
   },
 
-  async getFolderSnippets(folderId: string): Promise<Record<string, string>> {
-    // One Apple Event pulls every plaintext in this folder. Snippets are
-    // computed server-side so the JSON we return is small.
+  async getFolderSnippets(
+    folderIds: string[],
+  ): Promise<Record<string, Record<string, string>>> {
+    if (folderIds.length === 0) return {};
+    // Batched: a single osascript spawn pulls plaintext bulks for every
+    // requested folder, computes snippets server-side, returns nested map.
+    // Cost is dominated by Apple Events (one per folder × 2 properties),
+    // not the spawn we now amortize.
+    const idsJson = JSON.stringify(folderIds);
     const script = `
       const Notes = Application("Notes");
-      const folder = Notes.folders.byId(${JSON.stringify(folderId)});
-      const ids = folder.notes.id();
-      const plaintexts = folder.notes.plaintext();
+      const folderIds = ${idsJson};
       const out = {};
-      for (let k = 0; k < ids.length; k++) {
-        const text = plaintexts[k] || "";
-        const lines = text.split("\\n");
-        let snippet = "";
-        for (let l = 1; l < lines.length; l++) {
-          const t = lines[l].replace(/\\s+/g, " ").trim();
-          if (t) { snippet = t; break; }
+      for (let f = 0; f < folderIds.length; f++) {
+        const fid = folderIds[f];
+        try {
+          const folder = Notes.folders.byId(fid);
+          const ids = folder.notes.id();
+          const plaintexts = folder.notes.plaintext();
+          const snippets = {};
+          for (let k = 0; k < ids.length; k++) {
+            const text = plaintexts[k] || "";
+            const lines = text.split("\\n");
+            let snippet = "";
+            for (let l = 1; l < lines.length; l++) {
+              const t = lines[l].replace(/\\s+/g, " ").trim();
+              if (t) { snippet = t; break; }
+            }
+            if (snippet.length > 120) snippet = snippet.substring(0, 120);
+            snippets[ids[k]] = snippet;
+          }
+          out[fid] = snippets;
+        } catch (e) {
+          out[fid] = {};
         }
-        if (snippet.length > 120) snippet = snippet.substring(0, 120);
-        out[ids[k]] = snippet;
       }
       JSON.stringify(out);
     `;

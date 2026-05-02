@@ -92,10 +92,7 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      const [f, n] = await Promise.all([
-        notes.listFolders(),
-        notes.listNotes(),
-      ]);
+      const { folders: f, notes: n } = await notes.listAll();
       setFolders(f);
       setAllNotes(n);
     } catch (e) {
@@ -175,29 +172,34 @@ const App = () => {
 
   // Lazy-fetch snippets for every folder contributing to visibleNotes
   // (active folder + descendants). Cached per folder, deduped via
-  // inFlightSnippets so no folder is fetched twice in parallel.
+  // inFlightSnippets. One backend call covers the whole fan-out.
   useEffect(() => {
     if (activeFolderIds.size === 0) return;
+    const toFetch: string[] = [];
     for (const folderId of activeFolderIds) {
       if (snippetCache.has(folderId)) continue;
       if (inFlightSnippets.current.has(folderId)) continue;
+      toFetch.push(folderId);
       inFlightSnippets.current.add(folderId);
-      notes
-        .getFolderSnippets(folderId)
-        .then((snippets) => {
-          setSnippetCache((m) => {
-            const next = new Map(m);
-            next.set(folderId, snippets);
-            return next;
-          });
-        })
-        .catch(() => {
-          // Snippets are non-critical; swallow.
-        })
-        .finally(() => {
-          inFlightSnippets.current.delete(folderId);
-        });
     }
+    if (toFetch.length === 0) return;
+    notes
+      .getFolderSnippets(toFetch)
+      .then((byFolder) => {
+        setSnippetCache((m) => {
+          const next = new Map(m);
+          for (const [fid, snippets] of Object.entries(byFolder)) {
+            next.set(fid, snippets);
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        // Snippets are non-critical; swallow.
+      })
+      .finally(() => {
+        for (const fid of toFetch) inFlightSnippets.current.delete(fid);
+      });
   }, [activeFolderIds, snippetCache]);
 
   // Lazy-fetch preview when highlighted note changes. Debounced so fast
