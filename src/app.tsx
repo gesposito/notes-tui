@@ -3,6 +3,7 @@ import {
   createCliRenderer,
   type SelectOption,
   type SelectRenderable,
+  type TextareaRenderable,
 } from "@opentui/core";
 import {
   createRoot,
@@ -79,6 +80,7 @@ export const App = () => {
   const [toast, setToast] = useState("");
   const [helpOpen, setHelpOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [editBuffer, setEditBuffer] = useState("");
 
   // Surface backend errors as toast.
   useEffect(() => {
@@ -129,9 +131,10 @@ export const App = () => {
     highlightedNote?.id,
   );
 
-  // ── Refs for click-target geometry ──────────────────────────────────────
+  // ── Refs for click-target geometry + edit buffer access ────────────────
   const folderSelectRef = useRef<SelectRenderable | null>(null);
   const noteSelectRef = useRef<SelectRenderable | null>(null);
+  const textareaRef = useRef<TextareaRenderable | null>(null);
 
   // ── SelectOptions ───────────────────────────────────────────────────────
   const folderOptions: SelectOption[] = useMemo(
@@ -231,6 +234,51 @@ export const App = () => {
     }
   };
 
+  const enterEdit = async () => {
+    if (!highlightedNote) {
+      setToast("No note highlighted");
+      return;
+    }
+    try {
+      const plaintext = await notes.getNoteBody(highlightedNote.id);
+      setEditBuffer(plaintext);
+      setMode({ kind: "edit", noteId: highlightedNote.id });
+    } catch (e) {
+      setToast(
+        `Failed to open editor: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditBuffer("");
+    setMode({ kind: "browse" });
+  };
+
+  const saveEdit = async () => {
+    if (mode.kind !== "edit") return;
+    const noteId = mode.noteId;
+    // Read the current textarea contents (textarea is uncontrolled —
+    // initialValue seeded the buffer, edits live in the renderable).
+    const content = textareaRef.current?.plainText ?? editBuffer;
+    try {
+      await notes.updateNoteBody(noteId, content);
+      setToast("Saved");
+      setEditBuffer("");
+      setMode({ kind: "browse" });
+      // Title may have changed (first line of body); refresh list + caches.
+      if (highlightedNote) {
+        invalidateNotes([highlightedNote.folderId]);
+        invalidateSnippets([highlightedNote.folderId]);
+      }
+      await reload();
+    } catch (e) {
+      setToast(
+        `Save failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  };
+
   // ── Keyboard ────────────────────────────────────────────────────────────
   useAppKeybindings({
     mode,
@@ -245,6 +293,9 @@ export const App = () => {
     setHelpOpen,
     enterMoveMode,
     enterNewFolder,
+    enterEdit,
+    saveEdit,
+    cancelEdit,
     newNote,
     quit,
   });
@@ -362,6 +413,9 @@ export const App = () => {
           body={preview}
           loading={previewLoading}
           hasSelection={!!highlightedNote}
+          editing={mode.kind === "edit"}
+          initialEditValue={editBuffer}
+          textareaRef={textareaRef}
         />
       </box>
 
@@ -375,6 +429,8 @@ export const App = () => {
             "Filter notes · type to search · Enter apply · Esc cancel"}
           {mode.kind === "newFolder" &&
             "New folder · type name · Enter create · Esc cancel"}
+          {mode.kind === "edit" &&
+            "Edit note · type to change · Ctrl+S save · Esc cancel"}
         </text>
       </box>
       {toast && <text fg="#33cc66">{toast}</text>}

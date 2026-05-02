@@ -30,6 +30,15 @@ export interface NotesBackend {
    */
   getFolderNotes(folderIds: string[]): Promise<Note[]>;
   getNoteBody(noteId: string): Promise<string>;
+  /** Returns the HTML body (richer than plaintext — preserves checklists). */
+  getNoteHtml(noteId: string): Promise<string>;
+  /**
+   * Replace a note's body. `body` is plain text; this wraps each line in
+   * `<div>` so Apple Notes preserves line breaks. Title regenerates from
+   * the first line. Note: rich formatting (checklists, lists, bold) in
+   * the original is lost on round-trip.
+   */
+  updateNoteBody(noteId: string, body: string): Promise<void>;
   /**
    * Batched snippet fetch. Returns `{ folderId: { noteId: snippet } }` for every
    * requested folder.

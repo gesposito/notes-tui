@@ -126,6 +126,10 @@ class ScriptingBridgeBackend implements NotesBackend {
     return this.call("getNoteBody", { noteId });
   }
 
+  getNoteHtml(noteId: string): Promise<string> {
+    return this.call("getNoteHtml", { noteId });
+  }
+
   moveNotes(
     moves: Array<{ noteId: string; folderId: string }>,
   ): Promise<MoveResult[]> {
@@ -141,6 +145,10 @@ class ScriptingBridgeBackend implements NotesBackend {
 
   createFolder(accountName: string, name: string): Promise<void> {
     return osascriptBackend.createFolder(accountName, name);
+  }
+
+  updateNoteBody(noteId: string, body: string): Promise<void> {
+    return osascriptBackend.updateNoteBody(noteId, body);
   }
 }
 

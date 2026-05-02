@@ -60,6 +60,8 @@ const makeMock = (overrides: Partial<NotesBackend> = {}): NotesBackend => ({
     moves.map((m) => ({ noteId: m.noteId, ok: true })),
   createNote: async () => undefined,
   createFolder: async () => undefined,
+  getNoteHtml: async (id) => `<p>Body of ${id}</p>`,
+  updateNoteBody: async () => undefined,
   ...overrides,
 });
 

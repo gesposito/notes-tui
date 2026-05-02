@@ -17,6 +17,9 @@ type Deps = {
   setHelpOpen: Dispatch<SetStateAction<boolean>>;
   enterMoveMode: () => void;
   enterNewFolder: () => void;
+  enterEdit: () => void;
+  saveEdit: () => void;
+  cancelEdit: () => void;
   newNote: () => void;
   quit: () => void;
 };
@@ -71,6 +74,20 @@ export const useAppKeybindings = (deps: Deps): void => {
       return;
     }
 
+    // edit mode — <textarea> consumes printable keys; we only listen for
+    // Ctrl+S (save) and Esc (cancel). Note: terminals with flow control on
+    // intercept Ctrl+S — `stty -ixon` if you need to disable that.
+    if (deps.mode.kind === "edit") {
+      if (key.name === "escape") {
+        deps.cancelEdit();
+        return;
+      }
+      if (key.name === "s" && key.ctrl) {
+        deps.saveEdit();
+      }
+      return;
+    }
+
     // browse mode
     if (key.name === "q") {
       deps.quit();
@@ -110,6 +127,11 @@ export const useAppKeybindings = (deps: Deps): void => {
         else next.add(note.id);
         return next;
       });
+      return;
+    }
+
+    if (key.name === "e") {
+      deps.enterEdit();
       return;
     }
 

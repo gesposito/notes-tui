@@ -163,6 +163,15 @@ export const osascriptBackend: NotesBackend = {
     return await osascript(script);
   },
 
+  async getNoteHtml(noteId: string): Promise<string> {
+    const script = `
+      const Notes = Application("Notes");
+      const note = Notes.notes.byId(${JSON.stringify(noteId)});
+      note.body();
+    `;
+    return await osascript(script);
+  },
+
   async getFolderSnippets(
     folderIds: string[],
   ): Promise<Record<string, Record<string, string>>> {
@@ -198,6 +207,27 @@ export const osascriptBackend: NotesBackend = {
       JSON.stringify(out);
     `;
     return JSON.parse(await osascript(script));
+  },
+
+  async updateNoteBody(noteId: string, body: string): Promise<void> {
+    // Wrap each line in <div> so newlines survive; empty lines become <br>.
+    // This matches Apple Notes' own paragraph structure when it serializes back.
+    const html = body
+      .split("\n")
+      .map((line) => {
+        const escaped = line
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        return `<div>${escaped || "<br>"}</div>`;
+      })
+      .join("");
+    const script = `
+      const Notes = Application("Notes");
+      const note = Notes.notes.byId(${JSON.stringify(noteId)});
+      note.body = ${JSON.stringify(html)};
+    `;
+    await osascript(script);
   },
 
   async createNote(folderId: string): Promise<void> {

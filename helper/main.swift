@@ -268,6 +268,14 @@ func getNoteBody(noteId: String) -> Any {
     return (note.value(forKey: "plaintext") as? String) ?? ""
 }
 
+func getNoteHtml(noteId: String) -> Any {
+    guard let notesArr = (app as AnyObject).value(forKey: "notes") as? SBElementArray,
+          let note = notesArr.object(withID: noteId) as? SBObject else {
+        return ""
+    }
+    return (note.value(forKey: "body") as? String) ?? ""
+}
+
 func moveNotes(moves: [[String: String]]) -> Any {
     var results: [[String: Any]] = []
     guard let notesArr = (app as AnyObject).value(forKey: "notes") as? SBElementArray,
@@ -325,6 +333,8 @@ while let line = readLine() {
         result = getFolderSnippets(folderId: params["folderId"] as? String ?? "")
     case "getNoteBody":
         result = getNoteBody(noteId: params["noteId"] as? String ?? "")
+    case "getNoteHtml":
+        result = getNoteHtml(noteId: params["noteId"] as? String ?? "")
     case "moveNotes":
         let raw = params["moves"] as? [[String: Any]] ?? []
         let moves: [[String: String]] = raw.compactMap { m in
