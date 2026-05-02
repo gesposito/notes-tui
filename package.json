@@ -1,0 +1,24 @@
+{
+  "name": "notes-tui",
+  "module": "src/app.tsx",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/app.tsx",
+    "dev": "bun --watch src/app.tsx",
+    "typecheck": "tsc --noEmit",
+    "build": "bun build --compile src/app.tsx --outfile notes-tui"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.2.1",
+    "@opentui/react": "^0.2.1",
+    "react": "^19.2.5"
+  }
+}
