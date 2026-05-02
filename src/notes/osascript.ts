@@ -200,6 +200,36 @@ export const osascriptBackend: NotesBackend = {
     return JSON.parse(await osascript(script));
   },
 
+  async createNote(folderId: string): Promise<void> {
+    const script = `
+      const Notes = Application("Notes");
+      const folder = Notes.folders.byId(${JSON.stringify(folderId)});
+      Notes.make({ new: "note", at: folder });
+    `;
+    await osascript(script);
+  },
+
+  async createFolder(accountName: string, name: string): Promise<void> {
+    const script = `
+      const Notes = Application("Notes");
+      const accounts = Notes.accounts();
+      let account = null;
+      for (let i = 0; i < accounts.length; i++) {
+        if (accounts[i].name() === ${JSON.stringify(accountName)}) {
+          account = accounts[i];
+          break;
+        }
+      }
+      if (!account) throw new Error("Account not found: " + ${JSON.stringify(accountName)});
+      Notes.make({
+        new: "folder",
+        at: account,
+        withProperties: { name: ${JSON.stringify(name)} },
+      });
+    `;
+    await osascript(script);
+  },
+
   async moveNotes(moves): Promise<MoveResult[]> {
     if (moves.length === 0) return [];
     const movesJson = JSON.stringify(moves);

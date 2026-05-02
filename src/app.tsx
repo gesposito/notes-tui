@@ -39,6 +39,8 @@ import {
 import { FolderPane } from "./components/FolderPane.tsx";
 import { NotesPane } from "./components/NotesPane.tsx";
 import { PreviewPane } from "./components/PreviewPane.tsx";
+import { HelpDialog } from "./components/HelpDialog.tsx";
+import { NewFolderDialog } from "./components/NewFolderDialog.tsx";
 import type { Mode, Pane } from "./types.ts";
 
 export const App = () => {
@@ -75,6 +77,8 @@ export const App = () => {
   const [focused, setFocused] = useState<Pane>("folders");
   const [mode, setMode] = useState<Mode>({ kind: "browse" });
   const [toast, setToast] = useState("");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
 
   // Surface backend errors as toast.
   useEffect(() => {
@@ -183,17 +187,65 @@ export const App = () => {
     process.exit(0);
   };
 
+  const newNote = async () => {
+    if (!activeFolder) {
+      setToast("Select a folder first");
+      return;
+    }
+    try {
+      await notes.createNote(activeFolder.id);
+      setToast(`New note in ${activeFolder.path}`);
+      // Invalidate this folder's note cache + reload folder counts.
+      invalidateNotes([activeFolder.id]);
+      invalidateSnippets([activeFolder.id]);
+      await reload();
+    } catch (e) {
+      setToast(
+        `Create failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  };
+
+  const enterNewFolder = () => {
+    if (!activeFolder) {
+      setToast("Select a folder first (so we know which account to add to)");
+      return;
+    }
+    setNewFolderName("New Folder");
+    setMode({ kind: "newFolder" });
+  };
+
+  const submitNewFolder = async (name: string) => {
+    const trimmed = name.trim();
+    setMode({ kind: "browse" });
+    setNewFolderName("");
+    if (!trimmed || !activeFolder) return;
+    try {
+      await notes.createFolder(activeFolder.account, trimmed);
+      setToast(`Created folder "${trimmed}" in ${activeFolder.account}`);
+      await reload();
+    } catch (e) {
+      setToast(
+        `Create folder failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  };
+
   // ── Keyboard ────────────────────────────────────────────────────────────
   useAppKeybindings({
     mode,
     focused,
+    helpOpen,
     highlightedNote,
     setMode,
     setFocused,
     setFilter,
     setSort,
     setMarked,
+    setHelpOpen,
     enterMoveMode,
+    enterNewFolder,
+    newNote,
     quit,
   });
 
@@ -316,14 +368,24 @@ export const App = () => {
       <box>
         <text fg="#777">
           {mode.kind === "browse" &&
-            "Tab: switch · ↑↓: nav · Shift+↑↓: page · Space: mark · m: move · /: filter · s: sort · q: quit"}
+            "↑↓ nav · Tab switch · n new note · N new folder · Space mark · m move · / filter · s sort · ? help · q quit"}
           {mode.kind === "moveTarget" &&
-            "Pick destination · ↑↓: nav · Shift+↑↓: page · Enter: move · Esc: cancel"}
+            "Pick destination · ↑↓ nav · Enter move · Esc cancel"}
           {mode.kind === "filter" &&
-            "Filter notes · type to search · Enter: apply · Esc: cancel"}
+            "Filter notes · type to search · Enter apply · Esc cancel"}
+          {mode.kind === "newFolder" &&
+            "New folder · type name · Enter create · Esc cancel"}
         </text>
       </box>
       {toast && <text fg="#33cc66">{toast}</text>}
+      {helpOpen && <HelpDialog />}
+      {mode.kind === "newFolder" && (
+        <NewFolderDialog
+          initialValue={newFolderName}
+          onInput={setNewFolderName}
+          onSubmit={() => void submitNewFolder(newFolderName)}
+        />
+      )}
     </box>
   );
 };

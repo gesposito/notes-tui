@@ -40,4 +40,8 @@ export interface NotesBackend {
   moveNotes(
     moves: Array<{ noteId: string; folderId: string }>,
   ): Promise<MoveResult[]>;
+  /** Create a blank note in the given folder. */
+  createNote(folderId: string): Promise<void>;
+  /** Create a top-level folder in the named account. */
+  createFolder(accountName: string, name: string): Promise<void>;
 }

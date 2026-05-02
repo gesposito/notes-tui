@@ -7,15 +7,23 @@ import type { Mode, Pane } from "../types.ts";
 type Deps = {
   mode: Mode;
   focused: Pane;
+  helpOpen: boolean;
   highlightedNote: Note | undefined;
   setMode: (m: Mode) => void;
   setFocused: Dispatch<SetStateAction<Pane>>;
   setFilter: (f: string) => void;
   setSort: Dispatch<SetStateAction<SortMode>>;
   setMarked: Dispatch<SetStateAction<Set<string>>>;
+  setHelpOpen: Dispatch<SetStateAction<boolean>>;
   enterMoveMode: () => void;
+  enterNewFolder: () => void;
+  newNote: () => void;
   quit: () => void;
 };
+
+// Some terminals report `?` directly; others report `/` with shift. Match either.
+const isHelpKey = (key: { name: string; shift?: boolean }): boolean =>
+  key.name === "?" || (key.name === "/" && key.shift === true);
 
 /**
  * All app-level keybindings in one place. Mode-aware:
@@ -27,6 +35,18 @@ type Deps = {
  */
 export const useAppKeybindings = (deps: Deps): void => {
   useKeyboard((key) => {
+    // help dialog: ? or Esc closes it; nothing else does anything
+    if (deps.helpOpen) {
+      if (isHelpKey(key) || key.name === "escape") deps.setHelpOpen(false);
+      return;
+    }
+
+    // ? opens help from anywhere except filter mode (where <input> may consume it)
+    if (deps.mode.kind !== "filter" && isHelpKey(key)) {
+      deps.setHelpOpen(true);
+      return;
+    }
+
     // filter mode — the <input> owns printable keys; only Esc bubbles here
     if (deps.mode.kind === "filter") {
       if (key.name === "escape") {
@@ -42,6 +62,12 @@ export const useAppKeybindings = (deps: Deps): void => {
         deps.setMode({ kind: "browse" });
         deps.setFocused("notes");
       }
+      return;
+    }
+
+    // newFolder mode — <input> owns printable keys; only Esc bubbles
+    if (deps.mode.kind === "newFolder") {
+      if (key.name === "escape") deps.setMode({ kind: "browse" });
       return;
     }
 
@@ -61,6 +87,14 @@ export const useAppKeybindings = (deps: Deps): void => {
     }
     if (key.name === "s") {
       deps.setSort(cycleSort);
+      return;
+    }
+    // n / N (Shift+n): create note / folder. (Cmd+N in macOS terminals is
+    // intercepted by the terminal itself, so we use the bare letters per
+    // TUI convention.)
+    if (key.name === "n") {
+      if (key.shift) deps.enterNewFolder();
+      else deps.newNote();
       return;
     }
 

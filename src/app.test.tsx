@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { act } from "react";
 import { testRender } from "@opentui/react/test-utils";
 import { App } from "./app.tsx";
@@ -58,6 +58,8 @@ const makeMock = (overrides: Partial<NotesBackend> = {}): NotesBackend => ({
     Object.fromEntries(ids.map((id) => [id, {}])),
   moveNotes: async (moves) =>
     moves.map((m) => ({ noteId: m.noteId, ok: true })),
+  createNote: async () => undefined,
+  createFolder: async () => undefined,
   ...overrides,
 });
 
@@ -159,6 +161,73 @@ describe("notes-tui", () => {
     await interact(() => mockInput.pressKeys(["s"]));
     await renderOnce();
     expect(captureCharFrame()).toContain("[Date ↓]");
+  });
+
+  test("'?' toggles the help dialog", async () => {
+    const { mockInput, renderOnce, captureCharFrame } = await mount(makeMock());
+    expect(captureCharFrame()).not.toContain("Keyboard shortcuts");
+
+    await interact(() => mockInput.pressKeys(["?"]));
+    await renderOnce();
+    expect(captureCharFrame()).toContain("Keyboard shortcuts");
+    // A few entries from the dialog content
+    expect(captureCharFrame()).toContain("Navigation");
+    expect(captureCharFrame()).toContain("Cycle sort");
+
+    await interact(() => mockInput.pressKeys(["?"]));
+    await renderOnce();
+    expect(captureCharFrame()).not.toContain("Keyboard shortcuts");
+  });
+
+  test("'n' creates a note in the active folder", async () => {
+    const createNote = mock(async () => undefined);
+    const { mockInput, renderOnce } = await mount(makeMock({ createNote }));
+
+    await interact(() => mockInput.pressKeys(["n"]));
+    await renderOnce();
+
+    expect(createNote).toHaveBeenCalledTimes(1);
+    // Active folder at startup is fixtureFolders[0] → "f1"
+    expect(createNote).toHaveBeenCalledWith("f1");
+  });
+
+  test("'N' opens the new-folder dialog; Enter creates with the prefilled name", async () => {
+    const createFolder = mock(async () => undefined);
+    const { mockInput, renderOnce, captureCharFrame } = await mount(
+      makeMock({ createFolder }),
+    );
+
+    await interact(() => mockInput.pressKeys(["N"]));
+    await renderOnce();
+    const frame = captureCharFrame();
+    // Dialog markers: title + label
+    expect(frame).toContain("New Folder");
+    expect(frame).toContain("Name:");
+
+    // Enter commits the prefilled value ("New Folder").
+    await interact(() => mockInput.pressEnter());
+    await renderOnce();
+
+    expect(createFolder).toHaveBeenCalledTimes(1);
+    // Account from active folder ("iCloud"), name from prefill ("New Folder").
+    expect(createFolder).toHaveBeenCalledWith("iCloud", "New Folder");
+  });
+
+  test("Esc cancels the new-folder dialog without creating", async () => {
+    const createFolder = mock(async () => undefined);
+    const { mockInput, renderOnce, captureCharFrame } = await mount(
+      makeMock({ createFolder }),
+    );
+
+    await interact(() => mockInput.pressKeys(["N"]));
+    await renderOnce();
+    expect(captureCharFrame()).toContain("Name:");
+
+    await interact(() => mockInput.pressEscape());
+    await renderOnce();
+    // Dialog gone: the "Name:" label only appears inside the dialog.
+    expect(captureCharFrame()).not.toContain("Name:");
+    expect(createFolder).not.toHaveBeenCalled();
   });
 
   test("Tab → Space marks a note → 'm' enters move mode", async () => {

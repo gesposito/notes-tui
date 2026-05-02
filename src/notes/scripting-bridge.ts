@@ -1,4 +1,5 @@
 import type { Folder, MoveResult, Note, NotesBackend } from "./types.ts";
+import { osascriptBackend } from "./osascript.ts";
 
 type Pending = {
   resolve: (value: unknown) => void;
@@ -129,6 +130,17 @@ class ScriptingBridgeBackend implements NotesBackend {
     moves: Array<{ noteId: string; folderId: string }>,
   ): Promise<MoveResult[]> {
     return this.call("moveNotes", { moves });
+  }
+
+  // Creation operations are rare and the helper doesn't implement Apple
+  // Events for `make`. Defer to osa — one extra spawn on the rare write
+  // path is fine.
+  createNote(folderId: string): Promise<void> {
+    return osascriptBackend.createNote(folderId);
+  }
+
+  createFolder(accountName: string, name: string): Promise<void> {
+    return osascriptBackend.createFolder(accountName, name);
   }
 }
 
