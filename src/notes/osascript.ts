@@ -54,9 +54,10 @@ async function osascript(
 
 export const osascriptBackend: NotesBackend = {
   async listFolders(signal?: AbortSignal): Promise<Folder[]> {
-    // Lazy strategy: fetch folders + counts only. No per-note metadata yet.
-    // Per folder events: container() (~38ms) + notes.length (~10ms) ≈ 48ms.
-    // For 43 folders ≈ 2000ms, vs old listAll ≈ 5400ms.
+    // Bulk property-chain strategy: one Apple Event per property per account,
+    // regardless of folder count. Replaces the old per-folder container() +
+    // notes.length loop, which was ~1100 ms for 43 folders. Bulk path is
+    // ~150 ms (see scripts/bench-list-folders.js).
     const script = `
       function compute(node, byId, accountSet) {
         if (!node || node._computed) return node;
@@ -85,25 +86,24 @@ export const osascriptBackend: NotesBackend = {
       for (var i = 0; i < accounts.length; i++) {
         const account = accounts[i];
         const accountName = account.name();
-        const accountId = account.id();
-        const folders = account.folders();
+        // Each of these is a single Apple Event that returns an array
+        // covering every folder in the account. Property chains
+        // (folders.container.id, folders.notes.id) are evaluated by the
+        // Notes scripting engine in one shot — the win over the per-folder
+        // loop is ~20× for container() and ~3.7× for notes counts.
         const folderIds = account.folders.id();
         const folderNames = account.folders.name();
-        for (var j = 0; j < folders.length; j++) {
-          const folder = folders[j];
+        const containerIds = account.folders.container.id();
+        const noteIdArrays = account.folders.notes.id();
+        for (var j = 0; j < folderIds.length; j++) {
           const fid = folderIds[j];
-          let pid = accountId;
-          try {
-            const cont = folder.container();
-            if (cont) pid = cont.id();
-          } catch (e) {}
           folderInfo[fid] = {
             name: folderNames[j],
-            parentId: pid,
+            parentId: containerIds[j],
             account: accountName,
             depth: 0,
             path: "",
-            noteCount: folder.notes.length,
+            noteCount: noteIdArrays[j].length,
             _computed: false,
           };
           orderedFolderIds.push(fid);

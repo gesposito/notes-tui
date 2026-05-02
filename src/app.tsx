@@ -78,10 +78,22 @@ export const App = () => {
     return set;
   }, [folders, folderByPath]);
 
-  // Tree expansion state. Default: all collapsed (top-level only visible).
+  // Tree expansion state. Defaults to fully-expanded once folders load: it
+  // matches the macOS Notes sidebar's typical state and avoids a scroll-time
+  // perf trap — landing on a collapsed parent fans out a fetch across every
+  // descendant (notes + snippets), which can stall the UI 1–2 s. Expanded
+  // means each row is a single-folder fetch. Users can still collapse with
+  // ←; we just don't trigger the aggregation by default.
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(),
   );
+  const expandedSeeded = useRef(false);
+  useEffect(() => {
+    if (expandedSeeded.current) return;
+    if (foldersWithChildren.size === 0) return;
+    setExpandedFolders(new Set(foldersWithChildren));
+    expandedSeeded.current = true;
+  }, [foldersWithChildren]);
 
   // A folder is visible if every ancestor is expanded.
   const visibleFolders = useMemo(() => {

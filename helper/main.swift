@@ -58,7 +58,20 @@ func listFolders() -> Any {
         let accountName: String = get(acc, "name") ?? ""
         let accountId: String = get(acc, "id") ?? ""
         guard let foldersArr = elements(acc, "folders") else { continue }
-        let folders = foldersArr.get() as? [SBObject] ?? []
+
+        // Bulk reads — one Apple Event per property, regardless of folder
+        // count. Was 4×N events (id/name/container/notes per folder) and
+        // dominated by the per-folder container() round trip; on a 43-folder
+        // library this took ~5800 ms. Bulk reads land closer to ~150 ms.
+        let folderIds = bulkGet(foldersArr, "id") as? [String] ?? []
+        let folderNames = bulkGet(foldersArr, "name") as? [String] ?? []
+        // SBElementArray inherits NSArray, so KVC chained key paths work
+        // and the Notes engine resolves them in one shot.
+        let containerIds =
+            (foldersArr.value(forKeyPath: "container.id") as? [Any]) ?? []
+        // `notes.id` returns an array-of-arrays — count each inner array.
+        let noteIdArrays =
+            (foldersArr.value(forKeyPath: "notes.id") as? [[Any]]) ?? []
 
         struct Node {
             var name: String
@@ -69,14 +82,12 @@ func listFolders() -> Any {
         }
         var nodes: [String: Node] = [:]
         var orderedIds: [String] = []
-        for f in folders {
-            let fid: String = get(f, "id") ?? ""
-            let fname: String = get(f, "name") ?? ""
-            var pid = accountId
-            if let cont: SBObject = get(f, "container"),
-               let cid: String = get(cont, "id") {
-                pid = cid
-            }
+        for j in 0..<folderIds.count {
+            let fid = folderIds[j]
+            let fname = j < folderNames.count ? folderNames[j] : ""
+            let pid = (j < containerIds.count
+                       ? containerIds[j] as? String
+                       : nil) ?? accountId
             nodes[fid] = Node(name: fname, parentId: pid)
             orderedIds.append(fid)
         }
@@ -98,14 +109,10 @@ func listFolders() -> Any {
         }
         for id in orderedIds { compute(id) }
 
-        for id in orderedIds {
+        for j in 0..<orderedIds.count {
+            let id = orderedIds[j]
             let n = nodes[id]!
-            // Note count: 1 Apple Event per folder for the SBElementArray length.
-            var noteCount = 0
-            if let folder = foldersArr.object(withID: id) as? SBObject,
-               let notesArr = elements(folder, "notes") {
-                noteCount = notesArr.count
-            }
+            let noteCount = j < noteIdArrays.count ? noteIdArrays[j].count : 0
             out.append([
                 "id": id,
                 "name": n.name,
