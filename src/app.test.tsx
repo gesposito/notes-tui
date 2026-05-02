@@ -174,7 +174,7 @@ describe("notes-tui", () => {
     expect(captureCharFrame()).toContain("Keyboard shortcuts");
     // A few entries from the dialog content
     expect(captureCharFrame()).toContain("Navigation");
-    expect(captureCharFrame()).toContain("Cycle sort");
+    expect(captureCharFrame()).toContain("Sort By");
 
     await interact(() => mockInput.pressKeys(["?"]));
     await renderOnce();
@@ -249,6 +249,6 @@ describe("notes-tui", () => {
     // 'm' enters move mode; the folder pane title flips.
     await interact(() => mockInput.pressKeys(["m"]));
     await renderOnce();
-    expect(captureCharFrame()).toContain("Move 1 note → ...");
+    expect(captureCharFrame()).toContain("Move To…");
   });
 });

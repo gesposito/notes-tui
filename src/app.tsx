@@ -239,7 +239,7 @@ export const App = () => {
     }
     try {
       await notes.createNote(activeFolder.id);
-      setToast(`New note in ${activeFolder.path}`);
+      setToast(`New Note in ${activeFolder.path}`);
       // Invalidate this folder's note cache + reload folder counts.
       invalidateNotes([activeFolder.id]);
       invalidateSnippets([activeFolder.id]);
@@ -267,7 +267,7 @@ export const App = () => {
     if (!trimmed || !activeFolder) return;
     try {
       await notes.createFolder(activeFolder.account, trimmed);
-      setToast(`Created folder "${trimmed}" in ${activeFolder.account}`);
+      setToast(`Created Folder "${trimmed}" in ${activeFolder.account}`);
       await reload();
     } catch (e) {
       setToast(
@@ -382,11 +382,11 @@ export const App = () => {
   const noteBorderColor = focused === "notes" ? "#33ccff" : "#555";
 
   const folderTitle = moveTargetMode
-    ? `Move ${mode.sourceCount} note${mode.sourceCount === 1 ? "" : "s"} → ...`
+    ? `Move To…  (${mode.sourceCount} Note${mode.sourceCount === 1 ? "" : "s"})`
     : "Folders";
   const noteTitle =
     `Notes [${SORT_LABEL[sort]}]` +
-    `${marked.size > 0 ? `  (${marked.size} marked)` : ""}` +
+    `${marked.size > 0 ? `  (${marked.size} Selected)` : ""}` +
     `${activeFolder ? `  —  ${activeFolder.path}` : ""}`;
   const previewTitle = highlightedNote?.title || "Preview";
 
@@ -470,15 +470,15 @@ export const App = () => {
       <box>
         <text fg="#777">
           {mode.kind === "browse" &&
-            "↑↓ nav · Tab switch · n new note · N new folder · m move · / filter · s sort · r refresh · ? help · q quit"}
+            "↑↓ Nav · Tab Switch · n New Note · N New Folder · m Move To… · f Search · s Sort · r Refresh · ? Help · q Quit"}
           {mode.kind === "moveTarget" &&
-            "Pick destination · ↑↓ nav · Enter move · Esc cancel"}
+            "Move To… · ↑↓ Pick destination · Enter Move · Esc Cancel"}
           {mode.kind === "filter" &&
-            "Filter notes · type to search · Enter apply · Esc cancel"}
+            "Note List Search · type to filter · Enter Apply · Esc Cancel"}
           {mode.kind === "newFolder" &&
-            "New folder · type name · Enter create · Esc cancel"}
+            "New Folder · type name · Enter Create · Esc Cancel"}
           {mode.kind === "edit" &&
-            "Edit note · Ctrl+S save (formatting lost) · Esc cancel"}
+            "Edit Note · Ctrl+S Save (formatting lost — see EDITING.md) · Esc Cancel"}
         </text>
       </box>
       {toast && <text fg="#33cc66">{toast}</text>}

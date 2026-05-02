@@ -100,7 +100,7 @@ export const useMoveAction = (deps: Deps) => {
       const ok = results.filter((r) => r.ok).length;
       const failed = results.length - ok;
       deps.setToast(
-        `Moved ${ok} note${ok === 1 ? "" : "s"} → ${target.path}` +
+        `Moved ${ok} Note${ok === 1 ? "" : "s"} to ${target.path}` +
           (failed ? ` (${failed} failed)` : ""),
       );
       deps.setMarked(new Set());

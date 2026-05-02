@@ -25,24 +25,27 @@ export const SHORTCUTS: ShortcutGroup[] = [
   {
     name: "Notes",
     bindings: [
-      { key: "n", description: "New note in active folder" },
-      { key: "e", description: "Edit (plain text only — formatting lost on save)" },
-      { key: "Space", description: "Mark / unmark current note" },
-      { key: "m", description: "Move marked notes (or current) to a folder" },
+      { key: "n", description: "New Note (in active folder)" },
+      { key: "e", description: "Edit Note (plain text only — formatting lost on save)" },
+      { key: "Space", description: "Select / deselect Note" },
+      { key: "m", description: "Move To… (selected notes or current)" },
     ],
   },
   {
     name: "Folders",
     bindings: [
-      { key: "N (Shift+n)", description: "New folder in active account" },
+      { key: "N (Shift+n)", description: "New Folder (in active account)" },
     ],
   },
   {
     name: "View",
     bindings: [
-      { key: "/", description: "Filter notes by title" },
-      { key: "s", description: "Cycle sort: date ↓ → date ↑ → title" },
-      { key: "r", description: "Refresh from Notes (pull external changes)" },
+      {
+        key: "f",
+        description: "Note List Search (⌥⌘F also)",
+      },
+      { key: "s", description: "Sort By… (Date Modified ↓ / ↑ / Title)" },
+      { key: "r", description: "Refresh (pull external changes)" },
     ],
   },
   {

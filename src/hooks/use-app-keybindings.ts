@@ -98,7 +98,13 @@ export const useAppKeybindings = (deps: Deps): void => {
       deps.setFocused((p) => (p === "folders" ? "notes" : "folders"));
       return;
     }
-    if (key.name === "/") {
+    // Note List Search: `f` (mirrors Apple's ⌥⌘F without the modifiers
+    // most terminals strip). ⌥⌘F also fires if your terminal forwards
+    // Cmd+Option (iTerm2 / Ghostty / Kitty can be configured to).
+    if (
+      (key.name === "f" && !key.ctrl && !key.meta && !key.option) ||
+      (key.name === "f" && key.meta === true && key.option === true)
+    ) {
       deps.setFilter("");
       deps.setMode({ kind: "filter" });
       return;
