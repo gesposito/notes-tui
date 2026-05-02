@@ -19,6 +19,14 @@ type Mode =
   | { kind: "filter" }
   | { kind: "moveTarget"; sourceAccount: string; sourceCount: number };
 
+type SortMode = "dateDesc" | "dateAsc" | "titleAsc";
+const SORT_CYCLE: SortMode[] = ["dateDesc", "dateAsc", "titleAsc"];
+const SORT_LABEL: Record<SortMode, string> = {
+  dateDesc: "Date ↓",
+  dateAsc: "Date ↑",
+  titleAsc: "Title",
+};
+
 // === Folder pane render config ================================================
 // SHOW_FOLDER_COUNTS=false  → bare folder names.
 // RIGHT_ALIGN_COUNTS=false  → count inline (e.g. "Work  12"), no truncation.
@@ -69,6 +77,7 @@ const App = () => {
   const [noteCursor, setNoteCursor] = useState(0);
   const [marked, setMarked] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
+  const [sort, setSort] = useState<SortMode>("dateDesc");
   const [focused, setFocused] = useState<Pane>("folders");
   const [mode, setMode] = useState<Mode>({ kind: "browse" });
   const [toast, setToast] = useState("");
@@ -132,10 +141,25 @@ const App = () => {
       const arr = notesByFolder.get(fid);
       if (arr) all.push(...arr);
     }
-    if (!filter) return all;
-    const q = filter.toLowerCase();
-    return all.filter((n) => n.title.toLowerCase().includes(q));
-  }, [notesByFolder, activeFolderIds, filter]);
+    const filtered = !filter
+      ? all
+      : (() => {
+          const q = filter.toLowerCase();
+          return all.filter((n) => n.title.toLowerCase().includes(q));
+        })();
+    // Sort a copy so we don't mutate the cache arrays.
+    const sorted = filtered.slice();
+    if (sort === "dateDesc") {
+      sorted.sort((a, b) => (b.modifiedAt ?? "").localeCompare(a.modifiedAt ?? ""));
+    } else if (sort === "dateAsc") {
+      sorted.sort((a, b) => (a.modifiedAt ?? "").localeCompare(b.modifiedAt ?? ""));
+    } else {
+      sorted.sort((a, b) =>
+        (a.title || "").toLowerCase().localeCompare((b.title || "").toLowerCase()),
+      );
+    }
+    return sorted;
+  }, [notesByFolder, activeFolderIds, filter, sort]);
 
   // Lazy-fetch notes for any active folder we don't have cached yet.
   // One backend call covers the whole fan-out (active + descendants).
@@ -182,10 +206,10 @@ const App = () => {
     return m;
   }, [folders]);
 
-  // Reset note cursor when active folder or filter changes.
+  // Reset note cursor when active folder, filter, or sort changes.
   useEffect(() => {
     setNoteCursor(0);
-  }, [folderCursor, filter]);
+  }, [folderCursor, filter, sort]);
 
   // Approximate visible rows per pane.
   // Folders: 1 line per item; Notes: 2 lines (showDescription=true).
@@ -467,6 +491,13 @@ const App = () => {
       setMode({ kind: "filter" });
       return;
     }
+    if (key.name === "s") {
+      setSort((s) => {
+        const i = SORT_CYCLE.indexOf(s);
+        return SORT_CYCLE[(i + 1) % SORT_CYCLE.length]!;
+      });
+      return;
+    }
 
     if (focused !== "notes") return;
 
@@ -556,7 +587,10 @@ const App = () => {
   const folderTitle = moveTargetMode
     ? `Move ${mode.sourceCount} note${mode.sourceCount === 1 ? "" : "s"} → ...`
     : "Folders";
-  const noteTitle = `Notes${marked.size > 0 ? `  (${marked.size} marked)` : ""}${activeFolder ? `  —  ${activeFolder.path}` : ""}`;
+  const noteTitle =
+    `Notes [${SORT_LABEL[sort]}]` +
+    `${marked.size > 0 ? `  (${marked.size} marked)` : ""}` +
+    `${activeFolder ? `  —  ${activeFolder.path}` : ""}`;
 
   return (
     <box flexDirection="column" width="100%" height="100%">
@@ -681,7 +715,7 @@ const App = () => {
       <box>
         <text fg="#777">
           {mode.kind === "browse" &&
-            "Tab: switch · ↑↓: nav · Shift+↑↓: page · Space: mark · m: move · /: filter · q: quit"}
+            "Tab: switch · ↑↓: nav · Shift+↑↓: page · Space: mark · m: move · /: filter · s: sort · q: quit"}
           {mode.kind === "moveTarget" &&
             "Pick destination · ↑↓: nav · Shift+↑↓: page · Enter: move · Esc: cancel"}
           {mode.kind === "filter" &&
