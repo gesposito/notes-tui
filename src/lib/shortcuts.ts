@@ -49,6 +49,10 @@ export const SHORTCUTS: ShortcutGroup[] = [
       },
       { key: "s", description: "Sort By… (Date Modified ↓ / ↑ / Title)" },
       { key: "r", description: "Refresh (pull external changes)" },
+      {
+        key: "B (Shift+b)",
+        description: "Switch backend (osa / scripting-bridge / sqlite)",
+      },
     ],
   },
   {

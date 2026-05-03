@@ -11,8 +11,17 @@ import {
   useTerminalDimensions,
 } from "@opentui/react";
 import type { Folder, Note } from "./notes/index.ts";
-import { notes as defaultBackend } from "./notes/index.ts";
-import { NotesProvider, useNotes } from "./notes/context.tsx";
+import { NotesProvider, useNotes, useBackendChoice } from "./notes/context.tsx";
+import {
+  BACKEND_LABELS,
+  type BackendChoice,
+} from "./notes/index.ts";
+import {
+  loadSettings,
+  resolveInitialBackendChoice,
+  saveSettings,
+  type Settings,
+} from "./lib/settings.ts";
 import { SORT_LABEL, sortNotes, type SortMode } from "./lib/sort.ts";
 import {
   formatFolderOptionName,
@@ -45,10 +54,13 @@ import { NotesPane } from "./components/NotesPane.tsx";
 import { PreviewPane } from "./components/PreviewPane.tsx";
 import { HelpDialog } from "./components/HelpDialog.tsx";
 import { NewFolderDialog } from "./components/NewFolderDialog.tsx";
+import { BackendPickerDialog } from "./components/BackendPickerDialog.tsx";
 import type { Mode, Pane } from "./types.ts";
 
 export const App = () => {
   const notes = useNotes();
+  const { choice: backendChoice, setChoice: setBackendChoice } =
+    useBackendChoice();
   const renderer = useRenderer();
   const { height: termHeight } = useTerminalDimensions();
 
@@ -137,11 +149,17 @@ export const App = () => {
     return descendantIdSet(activeFolder, folders);
   }, [activeFolder, foldersWithChildren, expandedFolders, folders]);
 
+  // Bumped on each successful refresh and on backend switch. Wipes every
+  // data cache (notes, snippets, search index, preview LRU) so we don't
+  // serve stale content from a different backend or before a refresh.
+  // Despite the legacy name it's not preview-only anymore.
+  const [previewBustToken, setPreviewBustToken] = useState(0);
+
   // ── Notes / snippets / preview ──────────────────────────────────────────
   const { notesByFolder, invalidate: invalidateNotes, error: notesError } =
-    useNotesByFolder(activeFolderIds);
+    useNotesByFolder(activeFolderIds, previewBustToken);
   const { snippetCache, invalidate: invalidateSnippets } =
-    useFolderSnippets(activeFolderIds);
+    useFolderSnippets(activeFolderIds, previewBustToken);
   const [noteCursor, setNoteCursor] = useState(0);
   const [marked, setMarked] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -154,9 +172,6 @@ export const App = () => {
   const [helpOpen, setHelpOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [editBuffer, setEditBuffer] = useState("");
-  // Bumped on each successful refresh so useNotePreview re-fetches the body
-  // even when the highlighted noteId is unchanged.
-  const [previewBustToken, setPreviewBustToken] = useState(0);
   // Set when the watcher fires while the user is mid-edit; banner shows
   // until edit closes (save or cancel both reset it).
   const [externalChangeDuringEdit, setExternalChangeDuringEdit] =
@@ -469,6 +484,23 @@ export const App = () => {
     if (parent) setActiveFolderId(parent.id);
   };
 
+  const openBackendPicker = () => {
+    setMode({ kind: "backendPicker" });
+  };
+
+  const switchBackend = (next: BackendChoice) => {
+    setMode({ kind: "browse" });
+    if (next === backendChoice) return; // selecting current = no-op
+    setBackendChoice(next);
+    // Wipe every data cache. The hooks already react to `notes` identity
+    // changing (re-fetch via context), and bumping the bust token clears
+    // their accumulated state so we don't show data from the previous
+    // backend in the brief window before the refetch lands.
+    setPreviewBustToken((t) => t + 1);
+    setMarked(new Set());
+    setToast(`Switched to ${BACKEND_LABELS[next]}`);
+  };
+
   const saveEdit = async () => {
     if (mode.kind !== "edit") return;
     const noteId = mode.noteId;
@@ -517,6 +549,7 @@ export const App = () => {
     refresh: () => refresh(false),
     expandFolder,
     collapseOrParent,
+    openBackendPicker,
     quit,
   });
 
@@ -651,10 +684,10 @@ export const App = () => {
         />
       </box>
 
-      <box>
+      <box flexDirection="row" justifyContent="space-between">
         <text fg="#777">
           {mode.kind === "browse" &&
-            "↑↓ Nav · ←/→ Collapse/Expand · Tab Switch · n New Note · N New Folder · m Move To… · f Search · s Sort · r Refresh · ? Help · q Quit"}
+            "↑↓ Nav · ←/→ Collapse/Expand · Tab Switch · n New Note · N New Folder · m Move To… · f Search · s Sort · r Refresh · B Backend · ? Help · q Quit"}
           {mode.kind === "moveTarget" &&
             "Move To… · ↑↓ Pick destination · Enter Move · Esc Cancel"}
           {mode.kind === "filter" &&
@@ -663,7 +696,10 @@ export const App = () => {
             "New Folder · type name · Enter Create · Esc Cancel"}
           {mode.kind === "edit" &&
             "Edit Note · Ctrl+S Save (formatting lost — see EDITING.md) · Esc Cancel"}
+          {mode.kind === "backendPicker" &&
+            "Switch Backend · ↑↓ Pick · Enter Switch · Esc Cancel"}
         </text>
+        <text fg="#555"> [{backendChoice}] </text>
       </box>
       {indexEnabled && indexing && (
         <text fg="#e6c200">
@@ -688,14 +724,38 @@ export const App = () => {
           onSubmit={() => void submitNewFolder(newFolderName)}
         />
       )}
+      {mode.kind === "backendPicker" && (
+        <BackendPickerDialog current={backendChoice} onSelect={switchBackend} />
+      )}
     </box>
   );
 };
 
 if (import.meta.main) {
+  // Load persisted settings before mounting so the first render already
+  // has the user's last choice. NOTES_BACKEND env var still wins (handy
+  // for one-off A/B testing without touching the file).
+  const settings = await loadSettings();
+  const initialChoice = resolveInitialBackendChoice(settings);
+
+  // Persist on every in-app switch. We fire-and-forget — the user has
+  // already moved on; if the write fails we don't want to block the UI.
+  // Errors land on stderr so a tail of the log surfaces them; alt-screen
+  // hides them otherwise.
+  let current: Settings = settings;
+  const persistChoice = (next: BackendChoice) => {
+    current = { ...current, backendChoice: next };
+    saveSettings(current).catch((e) => {
+      process.stderr.write(`[notes-tui] failed to save settings: ${e}\n`);
+    });
+  };
+
   const renderer = await createCliRenderer({ screenMode: "alternate-screen" });
   createRoot(renderer).render(
-    <NotesProvider backend={defaultBackend}>
+    <NotesProvider
+      initialChoice={initialChoice}
+      onChoiceChange={persistChoice}
+    >
       <App />
     </NotesProvider>,
   );

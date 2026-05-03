@@ -24,6 +24,7 @@ type Deps = {
   refresh: () => void;
   expandFolder: () => void;
   collapseOrParent: () => void;
+  openBackendPicker: () => void;
   quit: () => void;
 };
 
@@ -77,6 +78,12 @@ export const useAppKeybindings = (deps: Deps): void => {
       return;
     }
 
+    // backendPicker mode — <select> owns ↑/↓/Enter; only Esc bubbles.
+    if (deps.mode.kind === "backendPicker") {
+      if (key.name === "escape") deps.setMode({ kind: "browse" });
+      return;
+    }
+
     // edit mode — <textarea> consumes printable keys; we only listen for
     // Ctrl+S (save) and Esc (cancel). Note: terminals with flow control on
     // intercept Ctrl+S — `stty -ixon` if you need to disable that.
@@ -125,6 +132,13 @@ export const useAppKeybindings = (deps: Deps): void => {
     if (key.name === "n") {
       if (key.shift) deps.enterNewFolder();
       else deps.newNote();
+      return;
+    }
+    // B (Shift+b): open backend picker. Lower-case is reserved for future
+    // (and is too easy to mash by accident for a destructive action like
+    // throwing away the data caches).
+    if (key.name === "b" && key.shift) {
+      deps.openBackendPicker();
       return;
     }
 

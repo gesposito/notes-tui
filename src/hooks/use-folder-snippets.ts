@@ -5,12 +5,21 @@ export type SnippetCache = Map<string, Record<string, string>>;
 
 /**
  * Lazy per-folder snippet cache. Same shape and invalidation contract as
- * useNotesByFolder. Snippets are non-critical, so fetch errors are swallowed.
+ * useNotesByFolder. Snippets are non-critical, so fetch errors are
+ * swallowed. `bustToken` wipes the cache on refresh / backend switch.
  */
-export const useFolderSnippets = (activeFolderIds: Set<string>) => {
+export const useFolderSnippets = (
+  activeFolderIds: Set<string>,
+  bustToken: number = 0,
+) => {
   const notes = useNotes();
   const [snippetCache, setSnippetCache] = useState<SnippetCache>(new Map());
   const inFlight = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    setSnippetCache(new Map());
+    inFlight.current = new Set();
+  }, [bustToken]);
 
   useEffect(() => {
     if (activeFolderIds.size === 0) return;

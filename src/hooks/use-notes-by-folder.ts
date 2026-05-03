@@ -8,12 +8,25 @@ export type NotesByFolder = Map<string, Note[]>;
  * Lazy per-folder note cache. When `activeFolderIds` changes, fetches notes
  * for any folder not yet cached (active + descendants in one batched call).
  * `invalidate(ids)` drops cache entries so the next render re-fetches.
+ *
+ * `bustToken` wipes the entire cache when bumped — used on refresh and
+ * on backend switch (where IDs may differ entirely).
  */
-export const useNotesByFolder = (activeFolderIds: Set<string>) => {
+export const useNotesByFolder = (
+  activeFolderIds: Set<string>,
+  bustToken: number = 0,
+) => {
   const notes = useNotes();
   const [notesByFolder, setNotesByFolder] = useState<NotesByFolder>(new Map());
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef<Set<string>>(new Set());
+
+  // Wipe everything on bustToken change (refresh / backend switch).
+  useEffect(() => {
+    setNotesByFolder(new Map());
+    setError(null);
+    inFlight.current = new Set();
+  }, [bustToken]);
 
   useEffect(() => {
     if (activeFolderIds.size === 0) return;
