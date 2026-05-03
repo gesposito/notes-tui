@@ -125,6 +125,10 @@ export const App = () => {
 
   // Active folder tracked by id so expand/collapse doesn't shift selection.
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  // Move-target picker uses its own cursor so the user can navigate the
+  // *full* folder list (not just visible/expanded ones) without disturbing
+  // the browse-mode active folder.
+  const [moveCursor, setMoveCursor] = useState(0);
   const folderCursor = useMemo(() => {
     if (!activeFolderId) return 0;
     const idx = visibleFolders.findIndex((f) => f.id === activeFolderId);
@@ -188,6 +192,21 @@ export const App = () => {
   useEffect(() => {
     setNoteCursor(0);
   }, [debouncedFolderCursor, filter, sort]);
+
+  // When move-target mode opens, seed the picker cursor at the active
+  // folder's position in the *full* folders list (so it starts somewhere
+  // sensible — usually the source folder the user was just browsing).
+  // Intentionally only depends on mode.kind so we don't reset mid-pick.
+  useEffect(() => {
+    if (mode.kind !== "moveTarget") return;
+    if (!activeFolder) {
+      setMoveCursor(0);
+      return;
+    }
+    const idx = folders.findIndex((f) => f.id === activeFolder.id);
+    setMoveCursor(idx >= 0 ? idx : 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode.kind]);
 
   // ── Search index (full-body, scoped to the visible selection) ──────────
   // The index covers the same folders that are *visible* in the notes pane:
@@ -258,10 +277,19 @@ export const App = () => {
     termHeight,
     filterRowVisible,
   );
+  // Move-target mode shows EVERY folder (so a target deep in a collapsed
+  // subtree is still pickable). Browse mode shows only the visible/expanded
+  // tree. Index-based handlers below all read paneFolders, so the index
+  // and the underlying folder always agree — the bug we shipped earlier
+  // was that the click handler indexed into `folders` while the Select
+  // listed `visibleFolders`, sending moves to the wrong target.
+  const moveTargetMode = mode.kind === "moveTarget";
+  const paneFolders = moveTargetMode ? folders : visibleFolders;
+  const paneCursor = moveTargetMode ? moveCursor : folderCursor;
   const folderScrollOffset = useScrollOffset(
-    folderCursor,
+    paneCursor,
     folderVisibleRows,
-    visibleFolders.length,
+    paneFolders.length,
   );
   const noteScrollOffset = useScrollOffset(
     noteCursor,
@@ -284,15 +312,28 @@ export const App = () => {
   // ── SelectOptions ───────────────────────────────────────────────────────
   const folderOptions: SelectOption[] = useMemo(
     () =>
-      visibleFolders.map((f) => {
+      paneFolders.map((f) => {
         const hasChildren = foldersWithChildren.has(f.id);
         const isExpanded = hasChildren && expandedFolders.has(f.id);
-        const marker = hasChildren ? (isExpanded ? "▾ " : "▸ ") : "  ";
+        // Disclosure markers are non-actionable in move mode (no expand/
+        // collapse there) so we keep the row plain to avoid suggesting
+        // they do something.
+        const marker = moveTargetMode
+          ? "  "
+          : hasChildren
+            ? isExpanded
+              ? "▾ "
+              : "▸ "
+            : "  ";
         // When expanded, child rows show their own counts beside the parent,
         // so showing the recursive total here would double-count. Collapse
         // it back to the direct count. Collapsed parents and leaves keep
-        // the recursive total so the user knows what's hidden.
-        const count = isExpanded ? f.noteCount : (folderCounts[f.id] ?? 0);
+        // the recursive total so the user knows what's hidden. Move mode
+        // always shows the full tree so we always show recursive counts.
+        const count =
+          !moveTargetMode && isExpanded
+            ? f.noteCount
+            : (folderCounts[f.id] ?? 0);
         return {
           name: formatFolderOptionName(
             "  ".repeat(f.depth) + marker,
@@ -303,7 +344,13 @@ export const App = () => {
           value: f.id,
         };
       }),
-    [visibleFolders, foldersWithChildren, expandedFolders, folderCounts],
+    [
+      paneFolders,
+      moveTargetMode,
+      foldersWithChildren,
+      expandedFolders,
+      folderCounts,
+    ],
   );
 
   // Cap the list passed to <select>: OpenTUI doesn't virtualize options, so
@@ -455,32 +502,39 @@ export const App = () => {
     setMode({ kind: "browse" });
   };
 
+  // expand/collapse use the *immediate* cursor (not `activeFolder`, which
+  // is debounced 150ms for fetch-throttling). Without this, pressing ↓
+  // then ← in quick succession would collapse the previously-active
+  // folder instead of the one the user just landed on.
+  const cursorFolder = visibleFolders[folderCursor];
+
   const expandFolder = () => {
-    if (!activeFolder || !foldersWithChildren.has(activeFolder.id)) return;
-    if (expandedFolders.has(activeFolder.id)) return;
+    if (!cursorFolder || !foldersWithChildren.has(cursorFolder.id)) return;
+    if (expandedFolders.has(cursorFolder.id)) return;
     setExpandedFolders((s) => {
       const next = new Set(s);
-      next.add(activeFolder.id);
+      next.add(cursorFolder.id);
       return next;
     });
   };
 
-  // Left arrow: collapse the active folder if it's expanded; otherwise jump
-  // to the parent. Mirrors how Finder/Files apps handle ← in tree views.
+  // Left arrow: collapse the cursor's folder if it's expanded; otherwise
+  // jump to the parent. Mirrors how Finder/Files apps handle ← in tree
+  // views.
   const collapseOrParent = () => {
-    if (!activeFolder) return;
-    if (expandedFolders.has(activeFolder.id)) {
+    if (!cursorFolder) return;
+    if (expandedFolders.has(cursorFolder.id)) {
       setExpandedFolders((s) => {
         const next = new Set(s);
-        next.delete(activeFolder.id);
+        next.delete(cursorFolder.id);
         return next;
       });
       return;
     }
-    if (activeFolder.depth === 0) return;
-    const idx = activeFolder.path.lastIndexOf(" / ");
+    if (cursorFolder.depth === 0) return;
+    const idx = cursorFolder.path.lastIndexOf(" / ");
     if (idx <= 0) return;
-    const parent = folderByPath.get(activeFolder.path.substring(0, idx));
+    const parent = folderByPath.get(cursorFolder.path.substring(0, idx));
     if (parent) setActiveFolderId(parent.id);
   };
 
@@ -579,7 +633,8 @@ export const App = () => {
     );
   }
 
-  const moveTargetMode = mode.kind === "moveTarget";
+  // (moveTargetMode + paneFolders + paneCursor declared above with the
+  // viewport math; reused here for border-coloring and the JSX below.)
   const folderBorderColor = moveTargetMode
     ? "#e6c200"
     : focused === "folders"
@@ -601,21 +656,23 @@ export const App = () => {
       <box flexDirection="row" flexGrow={1}>
         <FolderPane
           options={folderOptions}
-          cursor={folderCursor}
+          cursor={paneCursor}
           focused={focused === "folders" || moveTargetMode}
           title={folderTitle}
           borderColor={folderBorderColor}
           pageStep={pageStep}
           selectRef={folderSelectRef}
           onChange={(i) => {
-            const f = visibleFolders[i];
-            if (f) setActiveFolderId(f.id);
+            // paneFolders is `folders` in move mode, `visibleFolders` in
+            // browse mode — index always agrees with what's on screen.
+            const f = paneFolders[i];
+            if (!f) return;
+            if (moveTargetMode) setMoveCursor(i);
+            else setActiveFolderId(f.id);
           }}
           onSelect={(i) => {
+            const target = paneFolders[i];
             if (moveTargetMode) {
-              // Move-target mode lists every folder (no tree filtering),
-              // so we still index into `folders` here.
-              const target = folders[i];
               if (target) void performMove(target, mode.sourceAccount);
             } else {
               setFocused("notes");
@@ -624,20 +681,27 @@ export const App = () => {
           onMouseDown={makeOptionClickHandler(
             folderSelectRef.current,
             folderScrollOffset,
-            visibleFolders.length,
+            paneFolders.length,
             1,
             (i) => {
-              const f = visibleFolders[i];
-              if (f) setActiveFolderId(f.id);
-              setFocused("folders");
+              const f = paneFolders[i];
+              if (!f) return;
+              if (moveTargetMode) {
+                setMoveCursor(i);
+              } else {
+                setActiveFolderId(f.id);
+                setFocused("folders");
+              }
             },
           )}
           onMouseScroll={makeWheelScrollHandler(
-            visibleFolders.length,
+            paneFolders.length,
             (updater) => {
-              const next = updater(folderCursor);
-              const f = visibleFolders[next];
-              if (f) setActiveFolderId(f.id);
+              const next = updater(paneCursor);
+              const f = paneFolders[next];
+              if (!f) return;
+              if (moveTargetMode) setMoveCursor(next);
+              else setActiveFolderId(f.id);
             },
           )}
         />

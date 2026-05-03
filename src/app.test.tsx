@@ -253,4 +253,86 @@ describe("notes-tui", () => {
     await renderOnce();
     expect(captureCharFrame()).toContain("Move To…");
   });
+
+  // Regression: in move mode the picker must list every folder (not just
+  // the visible/expanded subset) AND the index→folder mapping in the
+  // dispatcher must agree with what's on screen. Earlier code listed
+  // `visibleFolders` but indexed `folders[i]` in onSelect, so picking a
+  // target with any parent collapsed would silently move the note to a
+  // *different* folder at the same numeric position in the unfiltered
+  // list. We assert both halves below.
+  test(
+    "move-target picker shows the full tree and dispatches to the visually-selected folder",
+    async () => {
+      const nestedFolders: Folder[] = [
+        { id: "alpha",   name: "Alpha",   account: "iCloud", path: "iCloud / Alpha",         depth: 0, noteCount: 1 },
+        { id: "bravo",   name: "Bravo",   account: "iCloud", path: "iCloud / Bravo",         depth: 0, noteCount: 0 },
+        { id: "b-child", name: "DeepFolder",   account: "iCloud", path: "iCloud / Bravo / Child", depth: 1, noteCount: 1 },
+        { id: "charlie", name: "Charlie", account: "iCloud", path: "iCloud / Charlie",       depth: 0, noteCount: 1 },
+      ];
+      const nestedNotes: Note[] = [
+        { id: "n-alpha",   title: "InAlpha",   folderId: "alpha",   modifiedAt: "2026-05-03T10:00:00Z" },
+        { id: "n-child",   title: "InDeep",    folderId: "b-child", modifiedAt: "2026-05-03T10:01:00Z" },
+        { id: "n-charlie", title: "InCharlie", folderId: "charlie", modifiedAt: "2026-05-03T10:02:00Z" },
+      ];
+      const moveNotes = mock(async (moves: Array<{ noteId: string; folderId: string }>) =>
+        moves.map((m) => ({ noteId: m.noteId, ok: true })),
+      );
+      const { mockInput, renderOnce, captureCharFrame } = await mount(
+        makeMock({
+          listFolders: async () => nestedFolders,
+          getFolderNotes: async (ids) =>
+            nestedNotes.filter((n) => ids.includes(n.folderId)),
+          moveNotes,
+        }),
+      );
+
+      // Default expand-all: all 4 rows visible.
+      expect(captureCharFrame()).toContain("DeepFolder");
+
+      // Move cursor to Bravo (index 1 in the expanded tree) and collapse
+      // it. The 300ms drain after ↓ guarantees the 150ms folder-cursor
+      // debounce has settled, so collapseOrParent reads the *new* active
+      // folder (Bravo) rather than the old one (Alpha).
+      await interact(() => mockInput.pressArrow("down"), 300);
+      await renderOnce();
+      await interact(() => mockInput.pressArrow("left"));
+      await renderOnce();
+      // After collapse: Child is hidden in browse mode.
+      expect(captureCharFrame()).not.toContain("DeepFolder");
+
+      // Tab to notes pane, mark the only note (Bravo collapsed → its
+      // subtree is aggregated → "InChild" shows up there).
+      await interact(() => mockInput.pressTab());
+      await renderOnce();
+      await interact(() => mockInput.pressKeys([" "]));
+      await renderOnce();
+
+      // Enter move mode.
+      await interact(() => mockInput.pressKeys(["m"]));
+      await renderOnce();
+      const moveFrame = captureCharFrame();
+      expect(moveFrame).toContain("Move To…");
+      // Half 1 of the regression: picker re-expands to the full tree even
+      // though Bravo is still collapsed in browse mode.
+      expect(moveFrame).toContain("DeepFolder");
+
+      // Cursor was seeded to Bravo's position in the full list (index 1).
+      // Press ↓ twice to reach Charlie (index 3 in folders[]).
+      // Half 2 of the regression: in the buggy code, the picker only
+      // listed 3 visible rows so ↓↓ from Bravo would wrap to Alpha and
+      // dispatch via `folders[0]`. We assert we land on Charlie.
+      await interact(() => mockInput.pressArrow("down"));
+      await renderOnce();
+      await interact(() => mockInput.pressArrow("down"));
+      await renderOnce();
+      await interact(() => mockInput.pressEnter());
+      await renderOnce();
+
+      expect(moveNotes).toHaveBeenCalledTimes(1);
+      expect(moveNotes).toHaveBeenCalledWith([
+        { noteId: "n-child", folderId: "charlie" },
+      ]);
+    },
+  );
 });
