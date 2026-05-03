@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "build": "bun build --compile src/app.tsx --outfile notes-tui",
+    "build:cli": "bun build --compile src/cli.ts --outfile notes",
     "build:helper": "swiftc -O helper/main.swift -framework ScriptingBridge -framework Foundation -o helper/notes-bridge",
+    "cli": "bun run src/cli.ts",
     "start:bridge": "NOTES_BACKEND=scripting-bridge bun run src/app.tsx"
   },
   "devDependencies": {
@@ -22,6 +24,7 @@
   "dependencies": {
     "@opentui/core": "^0.2.1",
     "@opentui/react": "^0.2.1",
+    "citty": "^0.2.2",
     "react": "^19.2.5"
   }
 }

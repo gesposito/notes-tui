@@ -6,6 +6,10 @@ out
 dist
 *.tgz
 
+# compiled binaries (bun build --compile / swiftc)
+/notes
+/notes-tui
+
 # code coverage
 coverage
 *.lcov

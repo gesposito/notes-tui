@@ -25,11 +25,15 @@ const emit = (line: string): void => {
 };
 
 // One-time hint on stderr (visible before alt-screen kicks in) so the user
-// knows where to look.
-process.stderr.write(
-  `[notes-tui] DEBUG=1 — logging to ${LOG_PATH}\n` +
-    `             (run \`tail -f ${LOG_PATH}\` in another terminal)\n`,
-);
+// knows where to look. Gated on DEBUG=1 — without the gate this would
+// also appear in CLI output and any other consumer that imports the
+// module unconditionally.
+if (Bun.env.DEBUG === "1") {
+  process.stderr.write(
+    `[notes-tui] DEBUG=1 — logging to ${LOG_PATH}\n` +
+      `             (run \`tail -f ${LOG_PATH}\` in another terminal)\n`,
+  );
+}
 
 // ── Stats ─────────────────────────────────────────────────────────────────
 type CallStats = {

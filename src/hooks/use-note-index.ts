@@ -13,14 +13,15 @@ export type IndexedNote = Note & { body: string };
  * cache survives between filter sessions in the same run; `bustToken`
  * (refresh) resets it.
  *
- * Why progressive: a one-shot fetch of all 4000+ notes' plaintext is ~6 s
- * with no UI feedback. Chunked we get a "X / Y folders indexed" updating
- * roughly every chunk's ~1 s. Same total time, much better perceived
- * responsiveness.
+ * Why progressive: a single folder's plaintext bulk call is ~150–250 ms;
+ * a collapsed parent with many subfolders can scope to dozens of folders
+ * and run multiple seconds. Chunking gives a "X / Y folders indexed"
+ * banner that updates roughly every chunk so the UI stays informative
+ * during the wait.
  *
- * The hook fetches metadata + bodies in parallel per chunk: getFolderNotes
- * is fast (~50 ms/folder), getFolderBodies is the slow one (plaintext is
- * the bottleneck), so the wall time per chunk ≈ the plaintext call.
+ * Per chunk the hook fetches metadata + bodies in parallel: getFolderNotes
+ * is fast, getFolderBodies dominates because Apple's `plaintext()` is the
+ * slow Apple Event. Wall time per chunk ≈ the plaintext call.
  */
 export const useNoteIndex = (
   allFolderIds: string[],

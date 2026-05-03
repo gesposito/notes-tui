@@ -59,14 +59,16 @@ func listFolders() -> Any {
         let accountId: String = get(acc, "id") ?? ""
         guard let foldersArr = elements(acc, "folders") else { continue }
 
-        // Bulk reads — one Apple Event per property, regardless of folder
-        // count. Was 4×N events (id/name/container/notes per folder) and
-        // dominated by the per-folder container() round trip; on a 43-folder
-        // library this took ~5800 ms. Bulk reads land closer to ~150 ms.
+        // Bulk reads via SB. `arrayByApplyingSelector:` (id/name) is one
+        // Apple Event each. KVC chained key paths (`container.id`,
+        // `notes.id`) compile but are NOT folded into a single event by
+        // ScriptingBridge — Cocoa iterates client-side and dispatches one
+        // Apple Event per element. Net: still much faster than the per-
+        // folder loop (43-folder library went from ~5800 ms to ~2200 ms),
+        // but ~3× slower than JXA's equivalent property chain
+        // (~150 ms script-only). See scripts/bench-list-folders.js.
         let folderIds = bulkGet(foldersArr, "id") as? [String] ?? []
         let folderNames = bulkGet(foldersArr, "name") as? [String] ?? []
-        // SBElementArray inherits NSArray, so KVC chained key paths work
-        // and the Notes engine resolves them in one shot.
         let containerIds =
             (foldersArr.value(forKeyPath: "container.id") as? [Any]) ?? []
         // `notes.id` returns an array-of-arrays — count each inner array.
