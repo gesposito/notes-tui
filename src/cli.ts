@@ -14,6 +14,8 @@
 // gated on `import.meta.main` so importing this file doesn't kick off the CLI.
 import { defineCommand, runMain } from "citty";
 import type { NotesBackend } from "./notes/types.ts";
+import { openNotesSqlite, SQLITE_DB_PATH } from "./notes/sqlite.ts";
+import { grantFda } from "./lib/grant-fda.ts";
 
 // ── Output helpers ─────────────────────────────────────────────────────────
 const printJson = (value: unknown, raw: boolean): void => {
@@ -334,6 +336,85 @@ export const buildCli = (backend: NotesBackend) => {
     },
   });
 
+  // FDA grant helper: opens the right Settings pane and reveals the
+  // compiled CLI in Finder. Doesn't itself need FDA, so this is the
+  // command to run *before* trying the SQLite backend.
+  const fdaGrant = defineCommand({
+    meta: {
+      name: "grant-fda",
+      alias: "fda",
+      description:
+        "Open Privacy → Full Disk Access and reveal this binary in Finder for drag-and-drop",
+    },
+    args: {
+      reveal: {
+        type: "boolean",
+        default: true,
+        alias: ["R"],
+        description: "Also open Finder with the binary pre-selected",
+      },
+    },
+    async run({ args }) {
+      grantFda({ revealInFinder: args.reveal });
+    },
+  });
+
+  // Diagnostic: dump NoteStore.sqlite schema so we can verify the SQLite
+  // backend's queries against the user's actual macOS version. Independent
+  // of `backend` — opens the DB read-only directly. Surfaces FDA errors.
+  const inspect = defineCommand({
+    meta: {
+      name: "inspect",
+      description:
+        "Dump NoteStore.sqlite schema (verifies the SQLite backend is viable on this Mac)",
+    },
+    args: {
+      path: {
+        type: "string",
+        default: SQLITE_DB_PATH,
+        valueHint: "DB_PATH",
+        description: "Path to NoteStore.sqlite",
+      },
+      sample: {
+        type: "boolean",
+        default: false,
+        description: "Also print 1 row from each non-empty Z* table",
+      },
+    },
+    async run({ args }) {
+      // Use the shared opener so FDA failures land as the actionable
+      // FullDiskAccessRequired error instead of a SQLITE_AUTH stack.
+      const db = openNotesSqlite(String(args.path));
+      const tables = db
+        .query<{ name: string; sql: string | null }, []>(
+          "SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name",
+        )
+        .all();
+      console.log(`-- Tables in ${args.path} (${tables.length}):`);
+      for (const t of tables) console.log(`--   ${t.name}`);
+      console.log("");
+      for (const t of tables) {
+        if (t.sql) console.log(`${t.sql};`);
+      }
+      const pk = db
+        .query<{ Z_NAME: string; Z_ENT: number }, []>(
+          "SELECT Z_NAME, Z_ENT FROM Z_PRIMARYKEY ORDER BY Z_ENT",
+        )
+        .all();
+      console.log("\n-- Z_PRIMARYKEY (entity name → Z_ENT):");
+      for (const r of pk) console.log(`--   ${r.Z_ENT.toString().padStart(3)}  ${r.Z_NAME}`);
+      if (args.sample) {
+        console.log("\n-- Sample rows from Z* tables:");
+        for (const t of tables) {
+          if (!t.name.startsWith("Z")) continue;
+          const row = db.query(`SELECT * FROM ${t.name} LIMIT 1`).get();
+          if (row) console.log(`-- ${t.name}: ${JSON.stringify(row)}`);
+        }
+      }
+      db.close();
+    },
+  });
+
   return defineCommand({
     meta: {
       name: "notes",
@@ -353,6 +434,8 @@ export const buildCli = (backend: NotesBackend) => {
       update,
       move,
       search,
+      inspect,
+      "grant-fda": fdaGrant,
     },
   });
 };

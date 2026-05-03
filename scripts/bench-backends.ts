@@ -13,6 +13,7 @@
 // they mutate Apple Notes and we don't want a benchmark to touch user data.
 import { osascriptBackend } from "../src/notes/osascript.ts";
 import { scriptingBridgeBackend } from "../src/notes/scripting-bridge.ts";
+import { sqliteBackend } from "../src/notes/sqlite.ts";
 import type { NotesBackend, Note } from "../src/notes/types.ts";
 
 // ── Argv ───────────────────────────────────────────────────────────────────
@@ -139,6 +140,7 @@ const main = async () => {
   const backends: Array<{ name: string; backend: NotesBackend }> = [
     { name: "osa", backend: osascriptBackend },
     { name: "sb", backend: scriptingBridgeBackend },
+    { name: "sql", backend: sqliteBackend },
   ];
 
   // Run all cells.

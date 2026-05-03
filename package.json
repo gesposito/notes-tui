@@ -12,6 +12,7 @@
     "build:cli": "bun build --compile src/cli.ts --outfile notes",
     "build:helper": "swiftc -O helper/main.swift -framework ScriptingBridge -framework Foundation -o helper/notes-bridge",
     "cli": "bun run src/cli.ts",
+    "grant-fda": "bun run scripts/grant-fda.ts",
     "start:bridge": "NOTES_BACKEND=scripting-bridge bun run src/app.tsx"
   },
   "devDependencies": {
