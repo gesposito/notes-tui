@@ -7,6 +7,7 @@ import type {
   NotesBackend,
 } from "./types.ts";
 import { osascriptBackend } from "./osascript.ts";
+import { extractNoteText, snippetFromText } from "./sqlite-body.ts";
 
 // macOS Notes stores everything in a single Core-Data-shaped SQLite. Path
 // is stable across recent macOS versions; if Apple ever moves it, we'll
@@ -301,27 +302,133 @@ class SqliteBackend implements NotesBackend {
     }));
   }
 
-  // ── Body / snippet / write paths defer to osa for now ────────────────────
-  // Bodies in NoteStore.sqlite are gzipped protobuf in
-  // ZICNOTEDATA.ZDATA, encoded with Apple's internal "typedstream"-ish
-  // format. Decoding is its own project (see apple_cloud_notes_parser
-  // for prior art); until we port a decoder, defer to the osa backend
-  // so the contract stays intact.
-  getFolderSnippets(
+  // ── Body / snippet paths via gzip + protobuf walk ────────────────────────
+  // ZICNOTEDATA.ZDATA holds the gzipped protobuf. extractNoteText pulls
+  // out the plaintext directly — no Apple Events involved. Falls back to
+  // osa per-note on decode failure (encrypted notes, schema mismatch).
+  // HTML still defers to osa (we'd need to walk attribute_run for that).
+  async getFolderSnippets(
     folderIds: string[],
     signal?: AbortSignal,
   ): Promise<Record<string, Record<string, string>>> {
-    return osascriptBackend.getFolderSnippets(folderIds, signal);
+    const bodies = await this.getFolderBodies(folderIds, signal);
+    const out: Record<string, Record<string, string>> = {};
+    for (const [fid, byNote] of Object.entries(bodies)) {
+      const snippets: Record<string, string> = {};
+      for (const [nid, body] of Object.entries(byNote)) {
+        snippets[nid] = snippetFromText(body);
+      }
+      out[fid] = snippets;
+    }
+    return out;
   }
-  getFolderBodies(
+
+  async getFolderBodies(
     folderIds: string[],
     signal?: AbortSignal,
   ): Promise<Record<string, Record<string, string>>> {
-    return osascriptBackend.getFolderBodies(folderIds, signal);
+    if (folderIds.length === 0) return {};
+    const db = this.getDb();
+    const ent = this.getEntities();
+    const storeUuid = this.getStoreUuid();
+
+    const folderPks = folderIds
+      .map((id) => uriToPk(id))
+      .filter((n): n is number => n != null);
+    if (folderPks.length === 0) return {};
+
+    // Single JOIN: every note in the requested folders + its body blob.
+    // ZICNOTEDATA is a separate table (one row per note); join via ZNOTE.
+    const placeholders = folderPks.map(() => "?").join(",");
+    const rows = db
+      .query<
+        {
+          notePk: number;
+          folderPk: number;
+          zdata: Uint8Array | null;
+        },
+        number[]
+      >(
+        `
+        SELECT
+          n.Z_PK   AS notePk,
+          n.ZFOLDER AS folderPk,
+          d.ZDATA  AS zdata
+        FROM ZICCLOUDSYNCINGOBJECT n
+        LEFT JOIN ZICNOTEDATA d ON d.ZNOTE = n.Z_PK
+        WHERE n.Z_ENT = ${ent.note}
+          AND COALESCE(n.ZMARKEDFORDELETION, 0) = 0
+          AND n.ZFOLDER IN (${placeholders})
+        `,
+      )
+      .all(...folderPks);
+
+    const out: Record<string, Record<string, string>> = {};
+    // Group by folder URI; fall back to osa for any rows we can't decode.
+    const fallbackPks: number[] = [];
+    for (const r of rows) {
+      const folderUri = pkToUri(storeUuid, "ICFolder", r.folderPk);
+      const noteUri = pkToUri(storeUuid, "ICNote", r.notePk);
+      out[folderUri] ??= {};
+      const text = r.zdata ? extractNoteText(r.zdata) : null;
+      if (text != null) {
+        out[folderUri]![noteUri] = text;
+      } else {
+        // Defer this specific note to osa; we'll merge results below.
+        fallbackPks.push(r.notePk);
+        out[folderUri]![noteUri] = "";
+      }
+    }
+    // If any decodes failed, ask osa for those specific notes. Done after
+    // SQLite path so the common case (all-decoded) skips osa entirely.
+    if (fallbackPks.length > 0 && !signal?.aborted) {
+      const fallbackByNoteId = new Map<string, string>();
+      for (const pk of fallbackPks) {
+        const noteUri = pkToUri(storeUuid, "ICNote", pk);
+        try {
+          fallbackByNoteId.set(
+            noteUri,
+            await osascriptBackend.getNoteBody(noteUri, signal),
+          );
+        } catch {
+          // Leave as empty string; preview will show blank.
+        }
+      }
+      for (const folderEntry of Object.values(out)) {
+        for (const [nid, val] of Object.entries(folderEntry)) {
+          if (val === "" && fallbackByNoteId.has(nid)) {
+            folderEntry[nid] = fallbackByNoteId.get(nid)!;
+          }
+        }
+      }
+    }
+    // Make sure folders with zero notes still appear with an empty record,
+    // matching osa's contract.
+    for (const fpk of folderPks) {
+      out[pkToUri(storeUuid, "ICFolder", fpk)] ??= {};
+    }
+    return out;
   }
-  getNoteBody(noteId: string, signal?: AbortSignal): Promise<string> {
-    return osascriptBackend.getNoteBody(noteId, signal);
+
+  async getNoteBody(noteId: string, signal?: AbortSignal): Promise<string> {
+    const pk = uriToPk(noteId);
+    if (pk == null) return osascriptBackend.getNoteBody(noteId, signal);
+    const db = this.getDb();
+    const row = db
+      .query<{ zdata: Uint8Array | null }, [number]>(
+        `SELECT d.ZDATA AS zdata
+         FROM ZICNOTEDATA d
+         WHERE d.ZNOTE = ?`,
+      )
+      .get(pk);
+    if (!row?.zdata) return osascriptBackend.getNoteBody(noteId, signal);
+    const text = extractNoteText(row.zdata);
+    if (text == null) return osascriptBackend.getNoteBody(noteId, signal);
+    return text;
   }
+
+  // HTML decoding requires walking attribute_run for formatting and
+  // attachments — much bigger project. Defer for now.
   getNoteHtml(noteId: string, signal?: AbortSignal): Promise<string> {
     return osascriptBackend.getNoteHtml(noteId, signal);
   }
