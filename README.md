@@ -68,7 +68,7 @@ cargo run --manifest-path rust/Cargo.toml --example mock_tui   # TUI over in-mem
 
 - Backends are picked the same way (`NOTES_BACKEND`, `B` in the TUI, persisted to the shared `config.json`). scripting-bridge spawns the same `helper/notes-bridge`; `NOTES_BRIDGE_HELPER` points it elsewhere.
 - `DEBUG=1` instruments the TUI as well as the CLI, logging to `/tmp/notes-tui-rs-debug.log`.
-- Full Disk Access is per binary (see [Permissions](#permissions)): grant your terminal, or `rust/target/release/notes` — again after each rebuild.
+- Full Disk Access goes to the binaries themselves, not your terminal (see [Permissions](#permissions)): `rust/target/release/{notes,notes-tui}`, again after each rebuild.
 - Small deliberate differences: search-index progress only counts folders in scope; a failed fetch isn't retried in a loop; `?` doesn't open help while typing a name or a note; the help dialog scrolls with ↑/↓; the CLI on scripting-bridge exits when done and prints keys in the same order as osa.
 
 ## Backend selection
@@ -93,47 +93,32 @@ For most workloads osa wins among the Apple-Events backends (bulk listFolders ~1
 
 Different backends need different macOS permissions:
 
-| Backend               | What it needs                                                     | Where to grant                                                                                                          |
-| --------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `osascript` (default) | **Automation** access to Notes.app                                | System Settings → Privacy & Security → **Automation** (prompted on first launch)                                        |
-| `scripting-bridge`    | Same Automation access (uses ScriptingBridge under the hood)      | Same as above                                                                                                           |
-| `sqlite`              | **Full Disk Access** for the binary that opens `NoteStore.sqlite` | System Settings → Privacy & Security → **Full Disk Access** (manual; macOS does not allow programmatic prompts for FDA) |
+| Backend               | What it needs                                                                            | Where to grant                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `osascript` (default) | **Automation** access to Notes.app                                                       | System Settings → Privacy & Security → **Automation** (prompted on first launch)                                        |
+| `scripting-bridge`    | Same Automation access (uses ScriptingBridge under the hood)                             | Same as above                                                                                                           |
+| `sqlite`              | **Full Disk Access** for the `notes` / `notes-tui` binary itself, plus Automation for it | System Settings → Privacy & Security → **Full Disk Access** (manual; macOS does not allow programmatic prompts for FDA) |
 
 ### Granting Full Disk Access (for the SQLite backend)
 
-Quick start: `bun run grant-fda` opens the FDA pane and prints the exact paths you can drag in (compiled CLI, `bun` binary, or terminal app).
+Grant it to the compiled binaries, not your terminal: a terminal grant would cover everything run in it.
 
-FDA is per-executable. **In practice**, granting it to your terminal app is the most reliable choice for everyday use — see "responsible process" below. The narrower options work but have caveats:
+- Bun: `./notes` and `./notes-tui` (`bun run build:cli`, `bun run build`).
+- Rust: `rust/target/release/notes` and `notes-tui` (`bun run build:rust`), or the copies in `~/.cargo/bin` after `cargo install --path rust`.
 
-1. **Your terminal app** (recommended in practice, broader scope):
-   - Drag Terminal.app / iTerm.app / Ghostty / WezTerm / etc. into the FDA list.
-   - Everything launched from a shell in that terminal inherits access — `bun run`, `./notes`, `sqlite3`, anything.
-   - Why this matters: macOS TCC attributes file access to the **responsible process** at the top of the tree. When you run `bun run cli` inside Claude Code, tmux, a terminal multiplexer, or any nested shell, the responsible process is your terminal app — not `bun`. Granting FDA to `bun` alone leaves the access blocked by the terminal-level decision.
-2. **Compiled CLI only** (narrowest scope):
-   ```bash
-   bun run build:cli           # → ./notes
-   codesign -s - ./notes       # ad-hoc sign so identity is at least explicit
-   open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
-   # In the System Settings pane, click +, then drag in ./notes
-   ./notes inspect             # smoke test — should dump schema
-   ```
-   Caveat: every `bun run build:cli` produces a different binary hash. macOS treats it as a new app, so the FDA grant doesn't carry over — you need to remove the stale entry and re-add the new binary after each rebuild. A paid Developer ID cert is the only way to get a stable identity.
-3. **`bun` itself**:
-   - Same deep-link command, then add `$(which bun)`. Works for direct `bun run` from a terminal that's already in the FDA list (or running from a non-multiplexed shell). Often _doesn't_ work when `bun` is nested under Claude Code, tmux, or similar — see (1). `bun upgrade` (or `mise install bun@…`) also replaces the binary and resets FDA.
+The TUIs walk you through it: when the grant is missing they open System Settings → Full Disk Access, reveal the binary in Finder ready to drag into the list, and say what to do next (`o` reopens both, `B` switches backend, `r` retries, `q` quits). From the CLI, `notes grant-fda` (or `bun run grant-fda` from source) does the same for both binaries. Without the grant, the SQLite backend and `notes inspect` fail with a `FullDiskAccessRequired` error that names the binary to add.
 
-If you forget to grant it, the SQLite backend (and `notes inspect`) throws a `FullDiskAccessRequired` error with the exact `open …` command and `codesign` hint inline — you can act on it without leaving the terminal.
+How a grant on just the binary works: macOS privacy checks apply to the **responsible process**, which for anything started in a terminal is the terminal app. So when the SQLite backend is selected (or for `notes inspect`), the binaries re-launch themselves with that responsibility disclaimed, and answer for themselves. This uses private libSystem calls that LLDB and Chromium also rely on; if a future macOS drops them, the binaries run as before, and only a terminal grant would work.
 
-Diagnostic: if `bun run cli inspect` still fails after granting, run this from the same shell to confirm whether the _shell_ has FDA at all:
+Caveats:
 
-```bash
-head -c 32 "$HOME/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite" | xxd
-```
-
-If that prints garbage hex bytes → shell has FDA, the issue is the bun/CLI grant specifically. If it prints `head: ...: Operation not permitted` → no process in this shell tree has FDA; grant to your terminal app.
+- Every build changes a binary's identity (it's ad-hoc signed), so macOS treats it as a new app: remove the stale entry and re-add the binary after rebuilding. An installed copy keeps its grant until it's reinstalled.
+- Because the binary answers for itself, macOS also asks once whether it may control Notes (Automation), since the SQLite backend still uses Apple Events for note bodies and writes. Again after each rebuild.
+- Running from source (`bun run start`, `bun run cli`) can't be granted narrowly: the process is `bun`, and the terminal answers for it. The TUI points you at the compiled binary instead.
 
 ### Why we can't auto-prompt
 
-Other macOS TCC resources (Camera, Mic, Calendar, Photos…) trigger a one-time system dialog the first time you call their API. **FDA is the only one that doesn't** — Apple deliberately requires it to be a manual user action. The best a CLI/app can do is detect the missing permission and link directly to the right pane, which we do.
+Other macOS TCC resources (Camera, Mic, Calendar, Photos…) trigger a one-time system dialog the first time you call their API. **FDA is the only one that doesn't** — Apple deliberately requires it to be a manual user action. The best a CLI/app can do is detect the missing permission, open the right pane, and reveal the binary to add, which we do.
 
 ## Scripts
 
