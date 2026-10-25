@@ -8,6 +8,8 @@ A terminal UI and CLI for macOS Apple Notes, written in Bun + React (OpenTUI).
 bun install
 ```
 
+Needs a recent Bun (verified on 1.4.4): the tooling uses the built-in `bun check` type checker and `bun fmt` formatter.
+
 See [Permissions](#permissions) below — the osa/SB backends only need Automation access, but the SQLite backend needs Full Disk Access.
 
 ## TUI
@@ -15,7 +17,7 @@ See [Permissions](#permissions) below — the osa/SB backends only need Automati
 ```bash
 bun run start                  # interactive three-pane browser
 bun run dev                    # same, with --watch
-bun run build && ./notes-tui   # compile a standalone binary
+bun run build && ./notes-tui   # type check, then compile a standalone binary
 ```
 
 Three panes (folders | notes | preview). Highlights:
@@ -29,7 +31,7 @@ Three panes (folders | notes | preview). Highlights:
 
 ```bash
 bun run cli <command>          # run from source
-bun run build:cli && ./notes   # compile a standalone `notes` binary
+bun run build:cli && ./notes   # type check, then compile a standalone `notes` binary
 ```
 
 Subcommands mirror the underlying NotesBackend; output is JSON to stdout (`-r` for compact).
@@ -116,8 +118,10 @@ Other macOS TCC resources (Camera, Mic, Calendar, Photos…) trigger a one-time 
 ## Scripts
 
 ```bash
-bun run typecheck                                          # tsc --noEmit
+bun check                                                  # type check (same errors as tsc)
+bun fmt                                                    # format (Prettier-compatible, config in bunfig.toml)
 bun test                                                   # bun:test, all suites
+bun run verify                                             # fmt --check + check + test, in parallel
 bun run scripts/bench-list-folders.js                      # JXA listFolders strategies
 bun run scripts/time-list-folders.ts                       # end-to-end osa timing
 bun run scripts/bench-backends.ts                          # full sweep × both backends

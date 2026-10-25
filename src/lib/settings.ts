@@ -1,6 +1,5 @@
-import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { BackendChoice } from "../notes/index.ts";
 
 // macOS-conventional location for app preferences. Persisted across runs;
@@ -63,8 +62,7 @@ export const saveSettings = async (
   settings: Settings,
   path: string = DEFAULT_SETTINGS_PATH,
 ): Promise<void> => {
-  // Bun.write doesn't auto-create parent directories.
-  mkdirSync(dirname(path), { recursive: true });
+  // Bun.write creates missing parent directories (createPath defaults to true).
   await Bun.write(path, JSON.stringify(settings, null, 2) + "\n");
 };
 

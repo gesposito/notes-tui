@@ -1,0 +1,5 @@
+# Formatter settings for `bun fmt`. Option names are Prettier's, and each is
+# also a flag (e.g. `bun fmt --print-width 100`). The codebase uses the
+# defaults, so the section stays empty; it still anchors config lookup here
+# instead of in a parent directory's bunfig.toml.
+[fmt]

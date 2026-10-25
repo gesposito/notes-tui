@@ -8,6 +8,8 @@ Default to using Bun instead of Node.js.
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`
 - Use `bun test` instead of `jest` or `vitest`
+- Use `bun check` instead of `tsc --noEmit`
+- Use `bun fmt` instead of `prettier`
 - Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
 - Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
 - Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
@@ -35,6 +37,24 @@ test("hello world", () => {
   expect(1).toBe(1);
 });
 ```
+
+## Type checking
+
+Use `bun check` to type check the project. It reads `tsconfig.json` and reports the same errors as `tsc`.
+
+- `bun check src/index.ts` checks one file and what it imports
+- `bun --check src/index.ts`, `bun test --check` and `bun build --check` type check first, and do nothing else if there is an error
+
+## Formatting
+
+Use `bun fmt` to format the project. It formats like Prettier, with options in the `[fmt]` section of `bunfig.toml`.
+
+- `bun fmt --check` lists unformatted files without writing
+- `bun fmt --staged` formats only the files staged in git
+
+## Verifying changes
+
+`bun run verify` runs `bun fmt --check`, `bun check` and `bun test` in parallel and reports every failure. Don't name a `package.json` script `check` or `fmt`: `bun check` and `bun fmt` run a same-named script instead of the built-in tool.
 
 ## Frontend
 
