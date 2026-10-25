@@ -1,8 +1,5 @@
 import type { SelectOption } from "@opentui/core";
-import {
-  BACKEND_LABELS,
-  type BackendChoice,
-} from "../notes/index.ts";
+import { BACKEND_LABELS, type BackendChoice } from "../notes/index.ts";
 
 type Props = {
   current: BackendChoice;

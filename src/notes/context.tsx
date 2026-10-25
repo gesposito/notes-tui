@@ -6,10 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  availableBackends,
-  type BackendChoice,
-} from "./index.ts";
+import { availableBackends, type BackendChoice } from "./index.ts";
 import type { NotesBackend } from "./types.ts";
 
 type CtxValue = {

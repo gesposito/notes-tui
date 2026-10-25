@@ -20,12 +20,7 @@ import {
   test,
 } from "bun:test";
 import { runCommand } from "citty";
-import type {
-  Folder,
-  MoveResult,
-  Note,
-  NotesBackend,
-} from "./notes/types.ts";
+import type { Folder, MoveResult, Note, NotesBackend } from "./notes/types.ts";
 import { buildCli } from "./cli.ts";
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
@@ -57,10 +52,30 @@ const fixtureFolders: Folder[] = [
 ];
 
 const fixtureNotes: Note[] = [
-  { id: "n1", title: "Plan A", folderId: "f1", modifiedAt: "2026-05-01T10:00:00Z" },
-  { id: "n2", title: "Plan B", folderId: "f1", modifiedAt: "2026-05-01T11:00:00Z" },
-  { id: "n3", title: "Quarterly report", folderId: "f2", modifiedAt: "2026-04-30T10:00:00Z" },
-  { id: "n4", title: "Old archived note", folderId: "f3", modifiedAt: "2026-04-29T10:00:00Z" },
+  {
+    id: "n1",
+    title: "Plan A",
+    folderId: "f1",
+    modifiedAt: "2026-05-01T10:00:00Z",
+  },
+  {
+    id: "n2",
+    title: "Plan B",
+    folderId: "f1",
+    modifiedAt: "2026-05-01T11:00:00Z",
+  },
+  {
+    id: "n3",
+    title: "Quarterly report",
+    folderId: "f2",
+    modifiedAt: "2026-04-30T10:00:00Z",
+  },
+  {
+    id: "n4",
+    title: "Old archived note",
+    folderId: "f3",
+    modifiedAt: "2026-04-29T10:00:00Z",
+  },
 ];
 
 const fixtureBodies: Record<string, string> = {
@@ -89,7 +104,8 @@ const makeMock = (
         [ids],
         fixtureNotes.filter((n) => ids.includes(n.folderId)),
       ),
-    getNoteBody: async (id) => log("getNoteBody", [id], fixtureBodies[id] ?? ""),
+    getNoteBody: async (id) =>
+      log("getNoteBody", [id], fixtureBodies[id] ?? ""),
     getNoteHtml: async (id) =>
       log("getNoteHtml", [id], `<p>${fixtureBodies[id] ?? ""}</p>`),
     getFolderSnippets: async (ids) =>

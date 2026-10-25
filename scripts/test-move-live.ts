@@ -71,7 +71,9 @@ const waitFor = async <T>(
     if (v != null) return v;
     await sleep(delayMs);
   }
-  throw new Error(`Timed out waiting for: ${desc} (${(attempts * delayMs) / 1000}s)`);
+  throw new Error(
+    `Timed out waiting for: ${desc} (${(attempts * delayMs) / 1000}s)`,
+  );
 };
 
 const oscript = (script: string): { ok: boolean; out: string } => {
@@ -129,7 +131,8 @@ const runE2E = async (
   try {
     // 1. Pick account
     const initial = await backend.listFolders();
-    if (initial.length === 0) throw new Error("no folders found — empty Notes?");
+    if (initial.length === 0)
+      throw new Error("no folders found — empty Notes?");
     account = initial[0]!.account;
     console.log(`  account=${account}`);
 
@@ -145,9 +148,17 @@ const runE2E = async (
       const list = await backend.listFolders();
       return list.find((f) => f.name === n) ?? null;
     };
-    const source = await waitFor(() => findFolder(SOURCE_NAME), "source folder visible");
-    const target = await waitFor(() => findFolder(TARGET_NAME), "target folder visible");
-    console.log(`  ✓ resolved IDs (source=${source.id.slice(-12)} target=${target.id.slice(-12)})`);
+    const source = await waitFor(
+      () => findFolder(SOURCE_NAME),
+      "source folder visible",
+    );
+    const target = await waitFor(
+      () => findFolder(TARGET_NAME),
+      "target folder visible",
+    );
+    console.log(
+      `  ✓ resolved IDs (source=${source.id.slice(-12)} target=${target.id.slice(-12)})`,
+    );
 
     // 4. Create a test note in source
     await backend.createNote(source.id);
@@ -158,13 +169,16 @@ const runE2E = async (
       const ns = await backend.getFolderNotes([source.id]);
       return ns[0] ?? null;
     }, "test note appears in source");
-    console.log(`  ✓ created note (id=${note.id.slice(-12)} title=${JSON.stringify(note.title)})`);
+    console.log(
+      `  ✓ created note (id=${note.id.slice(-12)} title=${JSON.stringify(note.title)})`,
+    );
 
     // 5. Move source → target
     const move1 = await backend.moveNotes([
       { noteId: note.id, folderId: target.id },
     ]);
-    if (!move1[0]?.ok) throw new Error(`move source→target failed: ${move1[0]?.error}`);
+    if (!move1[0]?.ok)
+      throw new Error(`move source→target failed: ${move1[0]?.error}`);
     await waitFor(async () => {
       const ns = await backend.getFolderNotes([target.id]);
       return ns.some((n) => n.id === note.id) ? true : null;
@@ -179,7 +193,8 @@ const runE2E = async (
     const move2 = await backend.moveNotes([
       { noteId: note.id, folderId: source.id },
     ]);
-    if (!move2[0]?.ok) throw new Error(`move target→source failed: ${move2[0]?.error}`);
+    if (!move2[0]?.ok)
+      throw new Error(`move target→source failed: ${move2[0]?.error}`);
     await waitFor(async () => {
       const ns = await backend.getFolderNotes([source.id]);
       return ns.some((n) => n.id === note.id) ? true : null;
@@ -187,7 +202,8 @@ const runE2E = async (
     const inTarget2 = (await backend.getFolderNotes([target.id])).some(
       (n) => n.id === note.id,
     );
-    if (inTarget2) throw new Error("note still appears in target after reverse move");
+    if (inTarget2)
+      throw new Error("note still appears in target after reverse move");
     console.log("  ✓ moved back target → source, target no longer contains it");
 
     // 7. Move to a folder in a different account (should be rejected). Skip
@@ -208,10 +224,16 @@ const runE2E = async (
         );
       }
     } else {
-      console.log("  · single-account library — skipping cross-account guard test");
+      console.log(
+        "  · single-account library — skipping cross-account guard test",
+      );
     }
 
-    return { backend: name, pass: true, ms: Math.round(performance.now() - t0) };
+    return {
+      backend: name,
+      pass: true,
+      ms: Math.round(performance.now() - t0),
+    };
   } catch (e) {
     return {
       backend: name,
@@ -236,6 +258,8 @@ for (const t of targets) {
 console.log("\n═══ Summary ═══");
 for (const r of results) {
   const tag = r.pass ? "PASS" : "FAIL";
-  console.log(`  ${tag}  ${r.backend.padEnd(18)} ${r.ms}ms${r.error ? `  — ${r.error}` : ""}`);
+  console.log(
+    `  ${tag}  ${r.backend.padEnd(18)} ${r.ms}ms${r.error ? `  — ${r.error}` : ""}`,
+  );
 }
 process.exit(results.every((r) => r.pass) ? 0 : 1);

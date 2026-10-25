@@ -296,7 +296,8 @@ export const buildCli = (backend: NotesBackend) => {
         type: "string",
         alias: ["f"],
         valueHint: "FOLDER_ID",
-        description: "Limit to a single folder (and its subtree if --recursive)",
+        description:
+          "Limit to a single folder (and its subtree if --recursive)",
       },
       recursive: {
         type: "boolean",
@@ -402,7 +403,8 @@ export const buildCli = (backend: NotesBackend) => {
         )
         .all();
       console.log("\n-- Z_PRIMARYKEY (entity name → Z_ENT):");
-      for (const r of pk) console.log(`--   ${r.Z_ENT.toString().padStart(3)}  ${r.Z_NAME}`);
+      for (const r of pk)
+        console.log(`--   ${r.Z_ENT.toString().padStart(3)}  ${r.Z_NAME}`);
       if (args.sample) {
         console.log("\n-- Sample rows from Z* tables:");
         for (const t of tables) {

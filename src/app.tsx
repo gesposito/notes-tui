@@ -5,17 +5,10 @@ import {
   type SelectRenderable,
   type TextareaRenderable,
 } from "@opentui/core";
-import {
-  createRoot,
-  useRenderer,
-  useTerminalDimensions,
-} from "@opentui/react";
+import { createRoot, useRenderer, useTerminalDimensions } from "@opentui/react";
 import type { Folder, Note } from "./notes/index.ts";
 import { NotesProvider, useNotes, useBackendChoice } from "./notes/context.tsx";
-import {
-  BACKEND_LABELS,
-  type BackendChoice,
-} from "./notes/index.ts";
+import { BACKEND_LABELS, type BackendChoice } from "./notes/index.ts";
 import {
   loadSettings,
   resolveInitialBackendChoice,
@@ -44,10 +37,7 @@ import { useNotePreview } from "./hooks/use-note-preview.ts";
 import { useNoteIndex } from "./hooks/use-note-index.ts";
 import { useMoveAction } from "./hooks/use-move-action.ts";
 import { useAppKeybindings } from "./hooks/use-app-keybindings.ts";
-import {
-  usePaneViewport,
-  useScrollOffset,
-} from "./hooks/use-pane-viewport.ts";
+import { usePaneViewport, useScrollOffset } from "./hooks/use-pane-viewport.ts";
 import { useDebouncedValue } from "./hooks/use-debounced-value.ts";
 import { FolderPane } from "./components/FolderPane.tsx";
 import { NotesPane } from "./components/NotesPane.tsx";
@@ -160,10 +150,15 @@ export const App = () => {
   const [previewBustToken, setPreviewBustToken] = useState(0);
 
   // ── Notes / snippets / preview ──────────────────────────────────────────
-  const { notesByFolder, invalidate: invalidateNotes, error: notesError } =
-    useNotesByFolder(activeFolderIds, previewBustToken);
-  const { snippetCache, invalidate: invalidateSnippets } =
-    useFolderSnippets(activeFolderIds, previewBustToken);
+  const {
+    notesByFolder,
+    invalidate: invalidateNotes,
+    error: notesError,
+  } = useNotesByFolder(activeFolderIds, previewBustToken);
+  const { snippetCache, invalidate: invalidateSnippets } = useFolderSnippets(
+    activeFolderIds,
+    previewBustToken,
+  );
   const [noteCursor, setNoteCursor] = useState(0);
   const [marked, setMarked] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -448,9 +443,7 @@ export const App = () => {
       invalidateIndex([activeFolder.id]);
       await reload();
     } catch (e) {
-      setToast(
-        `Create failed: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      setToast(`Create failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -576,9 +569,7 @@ export const App = () => {
       setPreviewBustToken((t) => t + 1);
       await reload();
     } catch (e) {
-      setToast(
-        `Save failed: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      setToast(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -768,14 +759,14 @@ export const App = () => {
       {indexEnabled && indexing && (
         <text fg="#e6c200">
           Indexing {indexProgress.loaded}/{indexProgress.total} folder
-          {indexProgress.total === 1 ? "" : "s"} in scope for full-text
-          search… (collapse a parent to widen, more specific terms to narrow)
+          {indexProgress.total === 1 ? "" : "s"} in scope for full-text search…
+          (collapse a parent to widen, more specific terms to narrow)
         </text>
       )}
       {indexEnabled && !indexing && filter.length > 0 && (
         <text fg="#777">
-          {visibleNotes.length} match{visibleNotes.length === 1 ? "" : "es"}
-          {" "}in {indexProgress.total} folder
+          {visibleNotes.length} match{visibleNotes.length === 1 ? "" : "es"} in{" "}
+          {indexProgress.total} folder
           {indexProgress.total === 1 ? "" : "s"}
         </text>
       )}
@@ -816,10 +807,7 @@ if (import.meta.main) {
 
   const renderer = await createCliRenderer({ screenMode: "alternate-screen" });
   createRoot(renderer).render(
-    <NotesProvider
-      initialChoice={initialChoice}
-      onChoiceChange={persistChoice}
-    >
+    <NotesProvider initialChoice={initialChoice} onChoiceChange={persistChoice}>
       <App />
     </NotesProvider>,
   );

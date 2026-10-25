@@ -156,10 +156,11 @@ describe("SqliteBackend.listFolders", () => {
 describe("SqliteBackend.getFolderNotes", () => {
   test("returns notes for requested folder URIs, skipping deleted ones", async () => {
     const backend = buildSqliteBackend(dbPath);
-    const notes = await backend.getFolderNotes([FOLDER_URI(20), FOLDER_URI(22)]);
-    const summary = notes
-      .map((n) => `${n.id}|${n.title}|${n.folderId}`)
-      .sort();
+    const notes = await backend.getFolderNotes([
+      FOLDER_URI(20),
+      FOLDER_URI(22),
+    ]);
+    const summary = notes.map((n) => `${n.id}|${n.title}|${n.folderId}`).sort();
     expect(summary).toEqual([
       `${NOTE_URI(30)}|Plan A|${FOLDER_URI(20)}`,
       `${NOTE_URI(31)}|Plan B|${FOLDER_URI(20)}`,

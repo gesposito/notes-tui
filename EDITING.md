@@ -92,16 +92,16 @@ match a smart folder still appear under their actual storage folder.
 
 ## Recommended workflow
 
-| Task | Use the TUI | Use Notes.app |
-| --- | --- | --- |
-| Navigate / search / triage many notes | ✅ | |
-| Bulk move | ✅ | |
-| Quick title or text-only note edits | ✅ | |
-| Plain notes (no formatting / attachments) | ✅ | |
-| Checklists, headings, bold/italic | | ✅ |
-| Attachments (images, PDFs, sketches) | | ✅ |
-| Concurrent editing across devices | | ✅ |
-| Anything you'd be sad to lose if it round-trips wrong | | ✅ |
+| Task                                                  | Use the TUI | Use Notes.app |
+| ----------------------------------------------------- | ----------- | ------------- |
+| Navigate / search / triage many notes                 | ✅          |               |
+| Bulk move                                             | ✅          |               |
+| Quick title or text-only note edits                   | ✅          |               |
+| Plain notes (no formatting / attachments)             | ✅          |               |
+| Checklists, headings, bold/italic                     |             | ✅            |
+| Attachments (images, PDFs, sketches)                  |             | ✅            |
+| Concurrent editing across devices                     |             | ✅            |
+| Anything you'd be sad to lose if it round-trips wrong |             | ✅            |
 
 ## How to detect a destructive edit before saving
 

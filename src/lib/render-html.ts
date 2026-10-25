@@ -46,10 +46,7 @@ export const htmlToTerminalText = (html: string): string => {
     /<input\s+[^>]*type=["']checkbox["'][^>]*\bchecked\b[^>]*>/gi,
     "[x] ",
   );
-  text = text.replace(
-    /<input\s+[^>]*type=["']checkbox["'][^>]*>/gi,
-    "[ ] ",
-  );
+  text = text.replace(/<input\s+[^>]*type=["']checkbox["'][^>]*>/gi, "[ ] ");
 
   // Apple Notes checklist <li> variants. Class names vary across versions,
   // hence the broad match.

@@ -1,11 +1,6 @@
 import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
-import type {
-  Folder,
-  MoveResult,
-  Note,
-  NotesBackend,
-} from "./types.ts";
+import type { Folder, MoveResult, Note, NotesBackend } from "./types.ts";
 import { osascriptBackend } from "./osascript.ts";
 import { extractNoteText, snippetFromText } from "./sqlite-body.ts";
 
@@ -94,7 +89,9 @@ class SqliteBackend implements NotesBackend {
       .query<{ Z_UUID: string }, []>("SELECT Z_UUID FROM Z_METADATA")
       .get();
     if (!row?.Z_UUID) {
-      throw new Error("Z_METADATA has no Z_UUID — corrupt or unexpected schema");
+      throw new Error(
+        "Z_METADATA has no Z_UUID — corrupt or unexpected schema",
+      );
     }
     this.storeUuid = row.Z_UUID;
     return this.storeUuid;

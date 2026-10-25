@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  descendantIdSet,
-  recursiveFolderCounts,
-} from "./folder-tree.ts";
+import { descendantIdSet, recursiveFolderCounts } from "./folder-tree.ts";
 import type { Folder } from "../notes/types.ts";
 
 const folder = (

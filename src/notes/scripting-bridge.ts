@@ -182,4 +182,5 @@ class ScriptingBridgeBackend implements NotesBackend {
   }
 }
 
-export const scriptingBridgeBackend: NotesBackend = new ScriptingBridgeBackend();
+export const scriptingBridgeBackend: NotesBackend =
+  new ScriptingBridgeBackend();

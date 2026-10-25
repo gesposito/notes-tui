@@ -10,11 +10,12 @@ const DEFAULT_WHEEL_STEP = 3;
  * cursor movement. Up/down scrolls the cursor by `step`, clamped to
  * `[0, total - 1]`.
  */
-export const makeWheelScrollHandler = (
-  total: number,
-  setCursor: (updater: (n: number) => number) => void,
-  step: number = DEFAULT_WHEEL_STEP,
-) =>
+export const makeWheelScrollHandler =
+  (
+    total: number,
+    setCursor: (updater: (n: number) => number) => void,
+    step: number = DEFAULT_WHEEL_STEP,
+  ) =>
   (e: OpenTUIMouseEvent): void => {
     const dir = e.scroll?.direction;
     if (!dir || total === 0) return;
@@ -37,13 +38,14 @@ export const makeWheelScrollHandler = (
  * `linesPerItem` accounts for the row height — Select renders 1 line per
  * option by default, 2 with showDescription=true.
  */
-export const makeOptionClickHandler = (
-  sel: SelectRenderable | null,
-  scrollOffset: number,
-  total: number,
-  linesPerItem: number,
-  onPick: (index: number) => void,
-) =>
+export const makeOptionClickHandler =
+  (
+    sel: SelectRenderable | null,
+    scrollOffset: number,
+    total: number,
+    linesPerItem: number,
+    onPick: (index: number) => void,
+  ) =>
   (e: OpenTUIMouseEvent): void => {
     if (!sel || e.button !== 0) return;
     const localY = e.y - sel.screenY;

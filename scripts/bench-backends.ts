@@ -26,7 +26,9 @@ const RUNS = Number(arg("--runs") ?? 5);
 const FOLDER_ARG = arg("--folder");
 
 // ── Stats helpers ──────────────────────────────────────────────────────────
-const time = async <T>(fn: () => Promise<T>): Promise<{ ms: number; result: T }> => {
+const time = async <T>(
+  fn: () => Promise<T>,
+): Promise<{ ms: number; result: T }> => {
   const t0 = performance.now();
   const result = await fn();
   return { ms: performance.now() - t0, result };
@@ -102,7 +104,9 @@ const main = async () => {
   const sampleNotes = await osascriptBackend.getFolderNotes([folder.id]);
   const sampleNote: Note | undefined = sampleNotes[0];
   if (!sampleNote) {
-    console.error("Chosen folder has no notes; getNoteBody/Html will be skipped");
+    console.error(
+      "Chosen folder has no notes; getNoteBody/Html will be skipped",
+    );
   }
   console.error(
     `Sample note:   ${sampleNote ? sampleNote.title.slice(0, 50) : "<none>"}\n`,
@@ -123,8 +127,14 @@ const main = async () => {
   }> = [
     { name: "listFolders", fn: (b) => () => b.listFolders() },
     { name: "getFolderNotes", fn: (b) => () => b.getFolderNotes([folder.id]) },
-    { name: "getFolderSnippets", fn: (b) => () => b.getFolderSnippets([folder.id]) },
-    { name: "getFolderBodies", fn: (b) => () => b.getFolderBodies([folder.id]) },
+    {
+      name: "getFolderSnippets",
+      fn: (b) => () => b.getFolderSnippets([folder.id]),
+    },
+    {
+      name: "getFolderBodies",
+      fn: (b) => () => b.getFolderBodies([folder.id]),
+    },
     {
       name: "getNoteBody",
       fn: (b) => () => b.getNoteBody(sampleNote!.id),
@@ -173,9 +183,7 @@ const main = async () => {
     "method".padEnd(20) +
       "  " +
       ["cold", "mean", "p50", "p95"]
-        .map((h) =>
-          backends.map((b) => `${b.name}.${h}`.padStart(11)).join(""),
-        )
+        .map((h) => backends.map((b) => `${b.name}.${h}`.padStart(11)).join(""))
         .join(""),
   );
   console.log("─".repeat(20 + 2 + backends.length * 4 * 11));

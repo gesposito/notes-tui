@@ -60,9 +60,7 @@ export const NotesPane = ({
         onSubmit={onFilterSubmit}
       />
     )}
-    {filter && !showFilterInput && (
-      <text fg="#777">search: {filter}</text>
-    )}
+    {filter && !showFilterInput && <text fg="#777">search: {filter}</text>}
     {options.length === 0 ? (
       <text fg="#777">(no notes)</text>
     ) : (

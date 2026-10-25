@@ -19,6 +19,7 @@ bun run build && ./notes-tui   # compile a standalone binary
 ```
 
 Three panes (folders | notes | preview). Highlights:
+
 - `←/→` — collapse / expand a folder. Counts and the notes pane both follow the visuals: collapsed parents show recursive totals + aggregated notes; expanded parents show direct only.
 - `f` — full-text search (title + body) scoped to the active selection. First use indexes the scope progressively; banner shows progress.
 - `e` — edit a note's plaintext body (Ctrl+S to save). See [`EDITING.md`](./EDITING.md) for caveats — formatting is lost on save.
@@ -70,11 +71,11 @@ For most workloads osa wins among the Apple-Events backends (bulk listFolders ~1
 
 Different backends need different macOS permissions:
 
-| Backend | What it needs | Where to grant |
-| --- | --- | --- |
-| `osascript` (default) | **Automation** access to Notes.app | System Settings → Privacy & Security → **Automation** (prompted on first launch) |
-| `scripting-bridge` | Same Automation access (uses ScriptingBridge under the hood) | Same as above |
-| `sqlite` | **Full Disk Access** for the binary that opens `NoteStore.sqlite` | System Settings → Privacy & Security → **Full Disk Access** (manual; macOS does not allow programmatic prompts for FDA) |
+| Backend               | What it needs                                                     | Where to grant                                                                                                          |
+| --------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `osascript` (default) | **Automation** access to Notes.app                                | System Settings → Privacy & Security → **Automation** (prompted on first launch)                                        |
+| `scripting-bridge`    | Same Automation access (uses ScriptingBridge under the hood)      | Same as above                                                                                                           |
+| `sqlite`              | **Full Disk Access** for the binary that opens `NoteStore.sqlite` | System Settings → Privacy & Security → **Full Disk Access** (manual; macOS does not allow programmatic prompts for FDA) |
 
 ### Granting Full Disk Access (for the SQLite backend)
 
@@ -96,14 +97,16 @@ FDA is per-executable. **In practice**, granting it to your terminal app is the 
    ```
    Caveat: every `bun run build:cli` produces a different binary hash. macOS treats it as a new app, so the FDA grant doesn't carry over — you need to remove the stale entry and re-add the new binary after each rebuild. A paid Developer ID cert is the only way to get a stable identity.
 3. **`bun` itself**:
-   - Same deep-link command, then add `$(which bun)`. Works for direct `bun run` from a terminal that's already in the FDA list (or running from a non-multiplexed shell). Often *doesn't* work when `bun` is nested under Claude Code, tmux, or similar — see (1). `bun upgrade` (or `mise install bun@…`) also replaces the binary and resets FDA.
+   - Same deep-link command, then add `$(which bun)`. Works for direct `bun run` from a terminal that's already in the FDA list (or running from a non-multiplexed shell). Often _doesn't_ work when `bun` is nested under Claude Code, tmux, or similar — see (1). `bun upgrade` (or `mise install bun@…`) also replaces the binary and resets FDA.
 
 If you forget to grant it, the SQLite backend (and `notes inspect`) throws a `FullDiskAccessRequired` error with the exact `open …` command and `codesign` hint inline — you can act on it without leaving the terminal.
 
-Diagnostic: if `bun run cli inspect` still fails after granting, run this from the same shell to confirm whether the *shell* has FDA at all:
+Diagnostic: if `bun run cli inspect` still fails after granting, run this from the same shell to confirm whether the _shell_ has FDA at all:
+
 ```bash
 head -c 32 "$HOME/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite" | xxd
 ```
+
 If that prints garbage hex bytes → shell has FDA, the issue is the bun/CLI grant specifically. If it prints `head: ...: Operation not permitted` → no process in this shell tree has FDA; grant to your terminal app.
 
 ### Why we can't auto-prompt

@@ -40,7 +40,9 @@ export const grantFda = (opts: GrantFdaOptions = {}): void => {
   const reveal = opts.revealInFinder ?? true;
   const bunPath = which("bun") || "(bun not in PATH)";
 
-  console.log("Opening System Settings → Privacy & Security → Full Disk Access…");
+  console.log(
+    "Opening System Settings → Privacy & Security → Full Disk Access…",
+  );
   spawnSync("open", [FDA_URL]);
 
   if (reveal && compiledCliPath && existsSync(compiledCliPath)) {
@@ -110,13 +112,15 @@ export const grantFda = (opts: GrantFdaOptions = {}): void => {
   if (compiledCliPath && existsSync(compiledCliPath)) {
     console.log(`  ${compiledCliPath} inspect | head -50`);
   } else {
-    console.log("  bun run cli inspect | head -50          # if you granted terminal/bun");
-    console.log("  bun run build:cli && ./notes inspect    # if you granted compiled CLI");
+    console.log(
+      "  bun run cli inspect | head -50          # if you granted terminal/bun",
+    );
+    console.log(
+      "  bun run build:cli && ./notes inspect    # if you granted compiled CLI",
+    );
   }
   console.log("");
-  console.log(
-    "Diagnostic if it still fails: from the same shell, run",
-  );
+  console.log("Diagnostic if it still fails: from the same shell, run");
   console.log(
     `  head -c 32 "$HOME/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite" | xxd`,
   );
@@ -124,6 +128,6 @@ export const grantFda = (opts: GrantFdaOptions = {}): void => {
     "  → hex bytes:                  shell has FDA, only bun/CLI is missing it",
   );
   console.log(
-    "  → \"Operation not permitted\":  no FDA in this shell tree → grant terminal",
+    '  → "Operation not permitted":  no FDA in this shell tree → grant terminal',
   );
 };

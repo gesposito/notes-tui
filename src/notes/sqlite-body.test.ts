@@ -60,7 +60,9 @@ describe("extractNoteText", () => {
 
   test("returns null on non-gzip input (e.g. encrypted blob)", () => {
     // Random non-gzip bytes — caller should fall back to osa.
-    expect(extractNoteText(new Uint8Array([0x00, 0x01, 0x02, 0x03]))).toBeNull();
+    expect(
+      extractNoteText(new Uint8Array([0x00, 0x01, 0x02, 0x03])),
+    ).toBeNull();
   });
 
   test("returns null on gzipped bytes that don't match the expected envelope", () => {

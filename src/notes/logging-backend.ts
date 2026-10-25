@@ -10,9 +10,7 @@ const getSink = (): Bun.FileSink => {
   if (!sink) {
     // Bun.file().writer() opens for write (truncates) — fresh log per run.
     sink = Bun.file(LOG_PATH).writer();
-    sink.write(
-      `# notes-tui debug log — started ${new Date().toISOString()}\n`,
-    );
+    sink.write(`# notes-tui debug log — started ${new Date().toISOString()}\n`);
     sink.flush();
   }
   return sink;
@@ -99,7 +97,8 @@ const log = (
   const elapsed = Math.round(performance.now() - sessionStart);
   const tag =
     outcome === "ok" ? "✓" : outcome === "abort" ? "✗abort" : "✗error";
-  const tail = outcome === "ok" ? summarize(result) : errorMsg ? ` ${errorMsg}` : "";
+  const tail =
+    outcome === "ok" ? summarize(result) : errorMsg ? ` ${errorMsg}` : "";
   emit(
     `[+${String(elapsed).padStart(5)}ms] ${method.padEnd(20)} ${fmtArgs(args)} → ${fmt(durationMs)} ${tag}${tail}\n`,
   );
@@ -124,7 +123,14 @@ const wrap = async <T>(
       log(method, args, dur, "abort");
       record(method, dur, "abort");
     } else {
-      log(method, args, dur, "error", undefined, String(e instanceof Error ? e.message : e));
+      log(
+        method,
+        args,
+        dur,
+        "error",
+        undefined,
+        String(e instanceof Error ? e.message : e),
+      );
       record(method, dur, "error");
     }
     throw e;
@@ -169,14 +175,16 @@ export const wrapWithLogging = (backend: NotesBackend): NotesBackend => ({
       backend.getFolderBodies(folderIds, signal),
     ),
   getNoteBody: (noteId, signal) =>
-    wrap<string>("getNoteBody", noteId, () => backend.getNoteBody(noteId, signal)),
+    wrap<string>("getNoteBody", noteId, () =>
+      backend.getNoteBody(noteId, signal),
+    ),
   getNoteHtml: (noteId, signal) =>
-    wrap<string>("getNoteHtml", noteId, () => backend.getNoteHtml(noteId, signal)),
+    wrap<string>("getNoteHtml", noteId, () =>
+      backend.getNoteHtml(noteId, signal),
+    ),
   moveNotes: (moves) =>
-    wrap<MoveResult[]>(
-      "moveNotes",
-      `${moves.length} moves`,
-      () => backend.moveNotes(moves),
+    wrap<MoveResult[]>("moveNotes", `${moves.length} moves`, () =>
+      backend.moveNotes(moves),
     ),
   createNote: (folderId) =>
     wrap<void>("createNote", folderId, () => backend.createNote(folderId)),
@@ -185,9 +193,7 @@ export const wrapWithLogging = (backend: NotesBackend): NotesBackend => ({
       backend.createFolder(accountName, name),
     ),
   updateNoteBody: (noteId, body) =>
-    wrap<void>(
-      "updateNoteBody",
-      { noteId, bodyLen: body.length },
-      () => backend.updateNoteBody(noteId, body),
+    wrap<void>("updateNoteBody", { noteId, bodyLen: body.length }, () =>
+      backend.updateNoteBody(noteId, body),
     ),
 });

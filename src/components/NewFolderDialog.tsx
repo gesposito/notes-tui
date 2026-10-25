@@ -9,11 +9,7 @@ type Props = {
  * pre-filled with `initialValue`; Enter commits via onSubmit, Esc cancels
  * (handled in useAppKeybindings since it sees mode === "newFolder").
  */
-export const NewFolderDialog = ({
-  initialValue,
-  onInput,
-  onSubmit,
-}: Props) => (
+export const NewFolderDialog = ({ initialValue, onInput, onSubmit }: Props) => (
   <box
     position="absolute"
     top="35%"

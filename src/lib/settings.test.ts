@@ -57,7 +57,10 @@ describe("loadSettings", () => {
 describe("saveSettings", () => {
   test("round-trips with loadSettings", async () => {
     const p = path("rt.json");
-    const original: Settings = { version: 1, backendChoice: "scripting-bridge" };
+    const original: Settings = {
+      version: 1,
+      backendChoice: "scripting-bridge",
+    };
     await saveSettings(original, p);
     expect(await loadSettings(p)).toEqual(original);
   });
@@ -77,7 +80,10 @@ describe("saveSettings", () => {
 describe("resolveInitialBackendChoice", () => {
   test("env var wins over persisted setting", () => {
     expect(
-      resolveInitialBackendChoice({ version: 1, backendChoice: "sqlite" }, "osa"),
+      resolveInitialBackendChoice(
+        { version: 1, backendChoice: "sqlite" },
+        "osa",
+      ),
     ).toBe("osa");
   });
 

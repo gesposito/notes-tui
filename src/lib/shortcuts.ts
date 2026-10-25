@@ -26,7 +26,10 @@ export const SHORTCUTS: ShortcutGroup[] = [
     name: "Notes",
     bindings: [
       { key: "n", description: "New Note (in active folder)" },
-      { key: "e", description: "Edit Note (plain text only — formatting lost on save)" },
+      {
+        key: "e",
+        description: "Edit Note (plain text only — formatting lost on save)",
+      },
       { key: "Space", description: "Select / deselect Note" },
       { key: "m", description: "Move To… (selected notes or current)" },
     ],

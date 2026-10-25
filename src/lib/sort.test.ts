@@ -1,17 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import {
-  cycleSort,
-  SORT_CYCLE,
-  sortNotes,
-  type SortMode,
-} from "./sort.ts";
+import { cycleSort, SORT_CYCLE, sortNotes, type SortMode } from "./sort.ts";
 import type { Note } from "../notes/types.ts";
 
-const note = (
-  id: string,
-  title: string,
-  modifiedAt: string | null,
-): Note => ({
+const note = (id: string, title: string, modifiedAt: string | null): Note => ({
   id,
   title,
   folderId: "f1",
@@ -67,19 +58,13 @@ describe("sortNotes", () => {
 
   test("null modifiedAt sorts last in dateDesc, first in dateAsc", () => {
     const desc = sortNotes(
-      [
-        note("a", "A", null),
-        note("b", "B", "2026-05-01T00:00:00Z"),
-      ],
+      [note("a", "A", null), note("b", "B", "2026-05-01T00:00:00Z")],
       "dateDesc",
     );
     expect(desc.map((n) => n.id)).toEqual(["b", "a"]);
 
     const asc = sortNotes(
-      [
-        note("a", "A", null),
-        note("b", "B", "2026-05-01T00:00:00Z"),
-      ],
+      [note("a", "A", null), note("b", "B", "2026-05-01T00:00:00Z")],
       "dateAsc",
     );
     expect(asc.map((n) => n.id)).toEqual(["a", "b"]);

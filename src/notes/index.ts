@@ -41,4 +41,3 @@ if (debug) {
 // (which can swap backends at runtime).
 const base = availableBackends[initialBackendChoice()];
 export const notes: NotesBackend = debug ? wrapWithLogging(base) : base;
-

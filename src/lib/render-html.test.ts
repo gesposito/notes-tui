@@ -12,9 +12,9 @@ describe("htmlToTerminalText", () => {
     expect(
       htmlToTerminalText('<input type="checkbox" checked> Done thing'),
     ).toBe("[x]  Done thing");
-    expect(
-      htmlToTerminalText('<input type="checkbox"> Pending thing'),
-    ).toBe("[ ]  Pending thing");
+    expect(htmlToTerminalText('<input type="checkbox"> Pending thing')).toBe(
+      "[ ]  Pending thing",
+    );
   });
 
   test("Apple-style <li class=checked> renders as [x]", () => {
@@ -44,8 +44,7 @@ describe("htmlToTerminalText", () => {
   });
 
   test("<div><br></div> renders as a single blank line between rows", () => {
-    const html =
-      "<div>A</div>\n<div><br></div>\n<div>B</div>";
+    const html = "<div>A</div>\n<div><br></div>\n<div>B</div>";
     expect(htmlToTerminalText(html)).toBe("A\n\nB");
   });
 
@@ -56,9 +55,9 @@ describe("htmlToTerminalText", () => {
   });
 
   test("strips formatting tags but keeps inner text", () => {
-    expect(
-      htmlToTerminalText('<p><b>Bold</b> and <i>italic</i></p>'),
-    ).toBe("Bold and italic");
+    expect(htmlToTerminalText("<p><b>Bold</b> and <i>italic</i></p>")).toBe(
+      "Bold and italic",
+    );
   });
 
   test("collapses 3+ consecutive newlines to two", () => {
