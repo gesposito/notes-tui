@@ -4,6 +4,7 @@
 //! Serialized field names match the TypeScript shapes (camelCase) so the
 //! `notes` CLI prints the same JSON as the Bun build.
 
+pub mod bridge;
 pub mod osascript;
 pub mod sqlite;
 pub mod sqlite_body;
