@@ -56,6 +56,10 @@ Use `bun fmt` to format the project. It formats like Prettier, with options in t
 
 `bun run verify` runs `bun fmt --check`, `bun check` and `bun test` in parallel and reports every failure. Don't name a `package.json` script `check` or `fmt`: `bun check` and `bun fmt` run a same-named script instead of the built-in tool.
 
+## Rust port
+
+`rust/` is a Cargo crate porting the app (binaries `notes-tui` and `notes`); both builds are kept. Keep them in step: the JXA scripts, CLI flags, and JSON shapes match the TypeScript build. From `rust/`, verify with `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`.
+
 ## Frontend
 
 Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.

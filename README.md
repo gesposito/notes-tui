@@ -51,6 +51,24 @@ notes move <NOTE_ID> [<NOTE_ID>...] -t <FOLDER_ID>
 
 `notes --help` and `notes <command> --help` cover the full surface, aliases, and value hints.
 
+## Rust variant
+
+[`rust/`](./rust) holds a Rust port that lives alongside the Bun app — both are kept. Same three backends (with the same JXA scripts), same `notes` subcommands and JSON output, same settings file; the TUI uses ratatui instead of OpenTUI.
+
+```bash
+cd rust
+cargo run --release                           # TUI (notes-tui)
+cargo run --release --bin notes -- folders    # CLI
+cargo install --path .                        # installs notes + notes-tui into ~/.cargo/bin
+cargo run --example mock_tui                  # the TUI over in-memory data — no Notes access
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+```
+
+- Backends are picked the same way (`NOTES_BACKEND`, `B` in the TUI, persisted to the shared `config.json`). scripting-bridge spawns the same `helper/notes-bridge`; `NOTES_BRIDGE_HELPER` points it elsewhere.
+- `DEBUG=1` instruments the TUI as well as the CLI, logging to `/tmp/notes-tui-rs-debug.log`.
+- Full Disk Access is per binary (see [Permissions](#permissions)): grant your terminal, or `rust/target/release/notes` — again after each rebuild.
+- Small deliberate differences: search-index progress only counts folders in scope; a failed fetch isn't retried in a loop; `?` doesn't open help while typing a name or a note; the help dialog scrolls with ↑/↓; the CLI on scripting-bridge exits when done and prints keys in the same order as osa.
+
 ## Backend selection
 
 Three implementations of `NotesBackend`, picked via `NOTES_BACKEND`:
