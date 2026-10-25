@@ -7,6 +7,12 @@
 
 pub mod cli;
 pub mod folder_tree;
+pub mod format;
 pub mod grant_fda;
+pub mod lru;
 pub mod notes;
+pub mod settings;
+pub mod shortcuts;
+pub mod sort;
 pub mod text;
+pub mod tui;
