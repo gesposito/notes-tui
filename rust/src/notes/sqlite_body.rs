@@ -12,11 +12,37 @@
 //! Inline attachments appear in the text as U+FFFC; we leave them in place,
 //! matching what `note.plaintext()` returns through osa.
 
-use std::io::Read;
+use std::cell::RefCell;
 
-use flate2::read::GzDecoder;
+use libdeflater::Decompressor;
 
 use crate::text::{collapse_js_whitespace, truncate_utf16};
+
+/// Deflate expands data at most ~1032:1, so a gzip trailer claiming more is
+/// a corrupt blob; refusing it up front avoids a huge allocation.
+const MAX_DEFLATE_RATIO: usize = 1032;
+
+thread_local! {
+    // Reused across the notes of a folder rather than allocated per note.
+    static DECOMPRESSOR: RefCell<Decompressor> = RefCell::new(Decompressor::new());
+}
+
+/// Whole-buffer gunzip with libdeflate — about 3× faster than flate2's
+/// default backend on note blobs, on par with `Bun.gunzipSync`. The output
+/// is sized from the gzip trailer, which stores the uncompressed length.
+fn gunzip(zdata: &[u8]) -> Option<Vec<u8>> {
+    let trailer: [u8; 4] = zdata.get(zdata.len().checked_sub(4)?..)?.try_into().ok()?;
+    let size = u32::from_le_bytes(trailer) as usize;
+    if size > zdata.len().saturating_mul(MAX_DEFLATE_RATIO) {
+        return None;
+    }
+    let mut out = vec![0; size];
+    let written = DECOMPRESSOR
+        .with_borrow_mut(|d| d.gzip_decompress(zdata, &mut out))
+        .ok()?;
+    out.truncate(written);
+    Some(out)
+}
 
 fn read_varint(buf: &[u8], pos: usize) -> Option<(u64, usize)> {
     let mut value = 0u64;
@@ -76,8 +102,7 @@ pub fn extract_note_text(zdata: &[u8]) -> Option<String> {
     if zdata.len() < 2 || zdata[0] != 0x1f || zdata[1] != 0x8b {
         return None;
     }
-    let mut decompressed = Vec::new();
-    GzDecoder::new(zdata).read_to_end(&mut decompressed).ok()?;
+    let decompressed = gunzip(zdata)?;
 
     // Walk: outer.field(2) → body.field(3) → note.field(2).
     let body = find_len_field(&decompressed, 2)?;
@@ -170,6 +195,21 @@ pub(crate) mod tests {
     #[test]
     fn rejects_gzip_without_the_expected_envelope() {
         assert_eq!(extract_note_text(&gzip(b"garbage")), None);
+    }
+
+    #[test]
+    fn rejects_truncated_blobs() {
+        let zdata = build_zdata("Title\nBody that gets cut off");
+        assert_eq!(extract_note_text(&zdata[..zdata.len() - 6]), None);
+    }
+
+    #[test]
+    fn rejects_a_trailer_claiming_an_impossible_size() {
+        // A corrupt length must not turn into a multi-GB allocation.
+        let mut zdata = build_zdata("Title\nBody");
+        let n = zdata.len();
+        zdata[n - 4..].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(extract_note_text(&zdata), None);
     }
 
     #[test]
