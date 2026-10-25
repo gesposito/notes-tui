@@ -5,6 +5,7 @@
 //! `notes` CLI prints the same JSON as the Bun build.
 
 pub mod bridge;
+pub mod logging;
 pub mod osascript;
 pub mod sqlite;
 pub mod sqlite_body;
@@ -137,14 +138,24 @@ impl fmt::Display for BackendChoice {
     }
 }
 
-/// Fresh backend instance for `choice`. Callers that switch backends at
-/// runtime should cache instances so the scripting-bridge helper process is
-/// reused.
-pub fn make_backend(choice: BackendChoice) -> Arc<dyn NotesBackend> {
-    match choice {
+/// `DEBUG=1` wraps backends with per-call timing (see `logging`).
+pub fn debug_enabled() -> bool {
+    std::env::var("DEBUG").is_ok_and(|v| v == "1")
+}
+
+/// Fresh backend instance for `choice`, optionally wrapped with logging.
+/// Callers that switch backends at runtime should cache instances (the TUI
+/// does) so the scripting-bridge helper process is reused.
+pub fn make_backend(choice: BackendChoice, debug: bool) -> Arc<dyn NotesBackend> {
+    let base: Arc<dyn NotesBackend> = match choice {
         BackendChoice::Osa => Arc::new(osascript::OsascriptBackend),
         BackendChoice::ScriptingBridge => Arc::new(bridge::ScriptingBridgeBackend::new()),
         BackendChoice::Sqlite => Arc::new(sqlite::SqliteBackend::new(sqlite::default_db_path())),
+    };
+    if debug {
+        Arc::new(logging::LoggingBackend::new(base))
+    } else {
+        base
     }
 }
 
