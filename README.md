@@ -1,6 +1,6 @@
 # notes-tui
 
-A terminal UI and CLI for macOS Apple Notes, written in Bun + React (OpenTUI).
+A terminal UI and CLI for macOS Apple Notes, written in Bun + React (OpenTUI), plus a Rust port with ratatui (see [Rust variant](#rust-variant)).
 
 ## Setup
 
