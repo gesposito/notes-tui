@@ -10,6 +10,9 @@ dist
 /notes
 /notes-tui
 
+# Rust port build output (cargo)
+/rust/target
+
 # code coverage
 coverage
 *.lcov
