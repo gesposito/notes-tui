@@ -25,7 +25,9 @@ use tokio::time::Instant;
 
 use super::ui;
 use crate::folder_tree::{descendant_ids, folders_equal, parent_path, recursive_folder_counts};
+pub use crate::grant_fda::FdaHelp;
 use crate::lru::Lru;
+use crate::notes::sqlite::needs_full_disk_access;
 use crate::notes::{
     BackendChoice, Folder, FolderTexts, Move, MoveResult, Note, NotesBackend, make_backend,
 };
@@ -98,11 +100,21 @@ impl BackendSource {
 }
 
 pub type ChoiceCallback = Box<dyn FnMut(BackendChoice) -> Result<(), String> + Send>;
+/// Opens System Settings + Finder for a missing Full Disk Access grant
+/// (`grant_fda::open_fda_help` in the binary; a stub in tests).
+pub type FdaHelper = Box<dyn FnMut() -> FdaHelp + Send>;
 
 #[derive(Debug)]
 pub enum FolderLoad {
     Load,
     Refresh { silent: bool, before: Vec<Folder> },
+}
+
+/// Why the folder list couldn't load.
+#[derive(Debug)]
+pub struct LoadError {
+    pub message: String,
+    pub needs_fda: bool,
 }
 
 /// Results from background tasks.
@@ -111,7 +123,7 @@ pub enum Msg {
     Folders {
         seq: u64,
         purpose: FolderLoad,
-        result: Result<Vec<Folder>, String>,
+        result: Result<Vec<Folder>, LoadError>,
     },
     Notes {
         generation: u64,
@@ -263,6 +275,12 @@ pub struct App {
     pub(super) folders: Vec<Folder>,
     pub(super) folders_loading: bool,
     pub(super) folders_error: Option<String>,
+    /// The error is a missing Full Disk Access grant (sqlite backend).
+    pub(super) needs_fda: bool,
+    /// Set once Settings + Finder have been opened for it (once per run,
+    /// then on demand with `o`).
+    pub(super) fda_help: Option<FdaHelp>,
+    fda_helper: FdaHelper,
     pub(super) tree: Tree,
     tree_dirty: bool,
     pub(super) expanded: HashSet<String>,
@@ -410,6 +428,7 @@ impl App {
         mut source: BackendSource,
         choice: BackendChoice,
         on_choice_change: ChoiceCallback,
+        fda_helper: FdaHelper,
         term_height: u16,
     ) -> (Self, UnboundedReceiver<Msg>) {
         let (tx, rx) = unbounded_channel();
@@ -419,6 +438,9 @@ impl App {
             backend,
             backend_choice: choice,
             on_choice_change,
+            needs_fda: false,
+            fda_help: None,
+            fda_helper,
             tx,
             generation: 0,
             folder_seq: 0,
@@ -945,7 +967,15 @@ impl App {
                 }
                 self.folders_loading = false;
                 match result {
-                    Err(e) => self.folders_error = Some(e),
+                    Err(e) => {
+                        self.folders_error = Some(e.message);
+                        self.needs_fda = e.needs_fda;
+                        // Open Settings + Finder the first time this run;
+                        // after that only on request (`o`), not on every retry.
+                        if e.needs_fda && self.fda_help.is_none() {
+                            self.fda_help = Some((self.fda_helper)());
+                        }
+                    }
                     Ok(fresh) => {
                         let refresh = match purpose {
                             FolderLoad::Load => None,
@@ -1170,9 +1200,13 @@ impl App {
         self.folder_seq += 1;
         self.folders_loading = true;
         self.folders_error = None;
+        self.needs_fda = false;
         let (seq, backend) = (self.folder_seq, self.backend.clone());
         self.spawn(async move {
-            let result = backend.list_folders().await.map_err(err);
+            let result = backend.list_folders().await.map_err(|e| LoadError {
+                needs_fda: needs_full_disk_access(&e),
+                message: err(e),
+            });
             Msg::Folders {
                 seq,
                 purpose,
@@ -1265,9 +1299,7 @@ impl App {
             return;
         }
         if self.main_hidden() {
-            if letter(&key) == Some(('q', false)) {
-                self.should_quit = true;
-            }
+            self.hidden_key(key);
             return;
         }
         if self.help_open {
@@ -1291,6 +1323,23 @@ impl App {
             Mode::NewFolder => self.new_folder_key(key),
             Mode::BackendPicker => self.picker_key(key),
             Mode::Edit { note_id } => self.edit_key(key, note_id),
+        }
+    }
+
+    /// Keys on the loading and error screens. The error screen isn't a dead
+    /// end: retry, switch backend (the picker draws over it), or, for a
+    /// missing Full Disk Access grant, reopen Settings + Finder.
+    fn hidden_key(&mut self, key: KeyEvent) {
+        if self.mode == Mode::BackendPicker {
+            return self.picker_key(key);
+        }
+        let Some((c, _)) = letter(&key) else { return };
+        match c {
+            'q' => self.should_quit = true,
+            'r' if self.folders_error.is_some() => self.load_folders(FolderLoad::Load),
+            'b' if self.folders_error.is_some() => self.open_backend_picker(),
+            'o' if self.needs_fda => self.fda_help = Some((self.fda_helper)()),
+            _ => {}
         }
     }
 
@@ -1353,14 +1402,7 @@ impl App {
                 // Cmd+N is the terminal's, so bare n / N per TUI convention.
                 'n' if shift => return self.enter_new_folder(),
                 'n' => return self.new_note(),
-                'b' if shift => {
-                    self.picker_cursor = BackendChoice::ALL
-                        .iter()
-                        .position(|&c| c == self.backend_choice)
-                        .unwrap_or(0);
-                    self.mode = Mode::BackendPicker;
-                    return;
-                }
+                'b' if shift => return self.open_backend_picker(),
                 _ => {}
             }
         }
@@ -1685,6 +1727,14 @@ impl App {
         }
     }
 
+    fn open_backend_picker(&mut self) {
+        self.picker_cursor = BackendChoice::ALL
+            .iter()
+            .position(|&c| c == self.backend_choice)
+            .unwrap_or(0);
+        self.mode = Mode::BackendPicker;
+    }
+
     fn switch_backend(&mut self, next: BackendChoice) {
         self.mode = Mode::Browse;
         if next == self.backend_choice {
@@ -1806,6 +1856,9 @@ mod tests {
         app: App,
         rx: UnboundedReceiver<Msg>,
         terminal: Terminal<TestBackend>,
+        /// How many times the app asked to open Settings + Finder (the
+        /// stub never opens anything).
+        fda_opened: Arc<std::sync::atomic::AtomicUsize>,
     }
 
     impl Harness {
@@ -1817,17 +1870,31 @@ mod tests {
 
         /// Mounted but not settled (for asserting the loading state).
         fn mount(backend: Arc<MockBackend>) -> Self {
+            let fda_opened = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let counter = fda_opened.clone();
             let (app, rx) = App::new(
                 BackendSource::Static(backend),
                 BackendChoice::Osa,
                 Box::new(|_| Ok(())),
+                Box::new(move || {
+                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    FdaHelp {
+                        app: "notes-tui".into(),
+                        path: "/bin/notes-tui".into(),
+                    }
+                }),
                 30,
             );
             Self {
                 app,
                 rx,
                 terminal: Terminal::new(TestBackend::new(140, 30)).unwrap(),
+                fda_opened,
             }
+        }
+
+        fn fda_opened(&self) -> usize {
+            self.fda_opened.load(std::sync::atomic::Ordering::SeqCst)
         }
 
         /// Applies task results and fires debounce timers until nothing is
@@ -1898,6 +1965,44 @@ mod tests {
         let frame = h.frame();
         assert!(frame.contains("Error: osascript failed (exit 1): not authorized"));
         assert!(frame.contains("Automation"));
+        assert!(frame.contains("r retry · B switch backend · q quit"));
+        assert_eq!(h.fda_opened(), 0, "only a missing FDA grant opens Settings");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn missing_full_disk_access_opens_settings_once_and_offers_a_way_out() {
+        let backend = fixture();
+        backend.fail_list_folders_fda();
+        let mut h = Harness::new(backend.clone()).await;
+        let frame = h.frame();
+        assert!(frame.contains("Full Disk Access needed"), "{frame}");
+        assert!(frame.contains("turn on notes-tui"));
+        assert!(frame.contains("Only notes-tui gets access, not your terminal"));
+        assert!(frame.contains("o reopen Settings & Finder"));
+        assert_eq!(h.fda_opened(), 1, "Settings + Finder open on first sight");
+
+        // Retrying re-hits the backend but doesn't reopen windows unasked.
+        h.key('r').await;
+        let lists = backend
+            .calls()
+            .iter()
+            .filter(|c| **c == Call::ListFolders)
+            .count();
+        assert_eq!(lists, 2);
+        assert_eq!(h.fda_opened(), 1);
+        assert!(h.frame().contains("Full Disk Access needed"));
+
+        // `o` reopens them on demand.
+        h.key('o').await;
+        assert_eq!(h.fda_opened(), 2);
+
+        // B opens the backend picker over the error screen; Esc closes it.
+        h.key('B').await;
+        assert!(h.frame().contains("Switch Backend"));
+        h.press(KeyCode::Esc, KeyModifiers::NONE).await;
+        assert!(!h.frame().contains("Switch Backend"));
+        h.key('q').await;
+        assert!(h.app.should_quit);
     }
 
     #[tokio::test(start_paused = true)]

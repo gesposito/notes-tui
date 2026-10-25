@@ -999,6 +999,7 @@ dependencies = [
  "flate2",
  "futures",
  "indexmap",
+ "libc",
  "libdeflater",
  "ratatui",
  "ratatui-textarea",

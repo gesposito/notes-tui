@@ -6,6 +6,7 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use notes_tui::grant_fda;
 use notes_tui::notes::BackendChoice;
 use notes_tui::notes::mock::{MockBackend, folder, note};
 use notes_tui::tui::{self, BackendSource};
@@ -39,6 +40,7 @@ async fn main() -> ExitCode {
         source: BackendSource::Static(Arc::new(backend)),
         choice: BackendChoice::Osa,
         on_choice_change: Box::new(|_| Ok(())),
+        fda_helper: Box::new(grant_fda::open_fda_help),
     })
     .await;
     match result {

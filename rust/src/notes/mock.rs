@@ -8,6 +8,7 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use tokio::sync::Notify;
 
+use super::sqlite::FullDiskAccessRequired;
 use super::sqlite_body::snippet_from_text;
 use super::{Folder, FolderTexts, Move, MoveResult, Note, NotesBackend};
 use crate::text::cmp_utf16;
@@ -33,6 +34,7 @@ struct Data {
     bodies: HashMap<String, String>,
     calls: Vec<Call>,
     list_folders_error: Option<String>,
+    list_folders_needs_fda: bool,
     created: usize,
 }
 
@@ -95,6 +97,12 @@ impl MockBackend {
         self.lock().list_folders_error = Some(message.to_owned());
     }
 
+    /// Fails `list_folders` the way the sqlite backend does without Full
+    /// Disk Access.
+    pub fn fail_list_folders_fda(&self) {
+        self.lock().list_folders_needs_fda = true;
+    }
+
     pub fn calls(&self) -> Vec<Call> {
         self.lock().calls.clone()
     }
@@ -143,6 +151,12 @@ impl NotesBackend for MockBackend {
             gate.notified().await;
         }
         let data = self.lock();
+        if data.list_folders_needs_fda {
+            return Err(FullDiskAccessRequired {
+                path: "/mock/NoteStore.sqlite".into(),
+            }
+            .into());
+        }
         match &data.list_folders_error {
             Some(msg) => Err(anyhow!(msg.clone())),
             None => Ok(data.folders.clone()),

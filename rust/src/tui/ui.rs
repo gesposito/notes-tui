@@ -194,18 +194,26 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         return;
     }
     if let Some(error) = &app.folders_error {
-        let text = Text::from(vec![
-            Line::styled(format!("Error: {error}"), Style::new().fg(RED)),
-            gray(
-                "On first run, macOS will ask permission to control Notes. If denied, \
-                 enable it in System Settings → Privacy & Security → Automation.",
-            ),
-            gray("Press Ctrl-C to quit."),
-        ]);
+        let text = if app.needs_fda {
+            fda_screen(app)
+        } else {
+            Text::from(vec![
+                Line::styled(format!("Error: {error}"), Style::new().fg(RED)),
+                gray(
+                    "On first run, macOS will ask permission to control Notes. If denied, \
+                     enable it in System Settings → Privacy & Security → Automation.",
+                ),
+                Line::raw(""),
+                gray("r retry · B switch backend · q quit"),
+            ])
+        };
         frame.render_widget(
             Paragraph::new(text).wrap(Wrap { trim: false }),
             area.inner(Margin::new(1, 1)),
         );
+        if app.mode == Mode::BackendPicker {
+            draw_backend_picker(frame, app, area);
+        }
         return;
     }
 
@@ -256,6 +264,44 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Mode::BackendPicker => draw_backend_picker(frame, app, area),
         _ => {}
     }
+}
+
+/// Guided screen for a missing Full Disk Access grant, in place of the raw
+/// error: which binary to turn on (it answers for itself, so the grant
+/// covers only it), what the app already opened, and a way out via another
+/// backend.
+fn fda_screen(app: &App) -> Text<'static> {
+    let help = app.fda_help.clone().unwrap_or_default();
+    let name = if help.app.is_empty() {
+        "notes-tui".to_owned()
+    } else {
+        help.app
+    };
+    Text::from(vec![
+        Line::styled("Full Disk Access needed", Style::new().fg(YELLOW)),
+        Line::raw(""),
+        Line::raw(
+            "The sqlite backend reads Notes' database directly, which macOS only allows \
+             for apps with Full Disk Access.",
+        ),
+        Line::raw(""),
+        Line::raw(format!(
+            "1. In System Settings → Privacy & Security → Full Disk Access (opened for you), turn on {name}."
+        )),
+        Line::raw(format!(
+            "   If it isn't listed, drag it in from the Finder window that shows it: {}",
+            help.path
+        )),
+        Line::raw(format!("2. Quit {name} (q) and start it again.")),
+        Line::raw(""),
+        gray(format!(
+            "Only {name} gets access, not your terminal. Rebuilding it changes its identity, \
+             so re-add it after each build."
+        )),
+        Line::raw("Or switch to a backend that doesn't need it: press B and pick osascript."),
+        Line::raw(""),
+        gray("o reopen Settings & Finder · B switch backend · r retry · q quit"),
+    ])
 }
 
 fn footer_hint(mode: &Mode) -> &'static str {

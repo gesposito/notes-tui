@@ -13,7 +13,7 @@ use futures::StreamExt;
 use ratatui::DefaultTerminal;
 use tokio::time::{Instant, sleep_until};
 
-pub use app::{App, BackendSource, ChoiceCallback, Mode, Msg, Pane};
+pub use app::{App, BackendSource, ChoiceCallback, FdaHelp, FdaHelper, Mode, Msg, Pane};
 
 use crate::notes::BackendChoice;
 
@@ -22,6 +22,9 @@ pub struct Options {
     pub choice: BackendChoice,
     /// Called on every in-app backend switch (the binary persists it).
     pub on_choice_change: ChoiceCallback,
+    /// Opens Settings + Finder when the sqlite backend lacks Full Disk Access
+    /// (`grant_fda::open_fda_help`).
+    pub fda_helper: FdaHelper,
 }
 
 /// Runs the TUI until the user quits, restoring the terminal on the way out
@@ -59,6 +62,7 @@ async fn event_loop(terminal: &mut DefaultTerminal, options: Options) -> Result<
         options.source,
         options.choice,
         options.on_choice_change,
+        options.fda_helper,
         height,
     );
     let mut events = EventStream::new();

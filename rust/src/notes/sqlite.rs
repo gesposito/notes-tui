@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use rusqlite::{Connection, OpenFlags, params_from_iter};
@@ -27,6 +27,27 @@ pub fn default_db_path() -> PathBuf {
     home.join("Library/Group Containers/group.com.apple.notes/NoteStore.sqlite")
 }
 
+/// macOS privacy protection (TCC) refused to open NoteStore.sqlite: the
+/// process needs Full Disk Access. Displays as the actionable hint, and the
+/// TUI recognizes it to offer opening System Settings.
+#[derive(Debug)]
+pub struct FullDiskAccessRequired {
+    pub path: PathBuf,
+}
+
+impl std::fmt::Display for FullDiskAccessRequired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&fda_hint(&self.path))
+    }
+}
+
+impl std::error::Error for FullDiskAccessRequired {}
+
+/// Whether `e` (or anything it wraps) is a missing Full Disk Access grant.
+pub fn needs_full_disk_access(e: &anyhow::Error) -> bool {
+    e.chain().any(|cause| cause.is::<FullDiskAccessRequired>())
+}
+
 fn fda_hint(path: &Path) -> String {
     let exe = std::env::current_exe()
         .map(|p| p.display().to_string())
@@ -34,19 +55,15 @@ fn fda_hint(path: &Path) -> String {
     format!(
         "FullDiskAccessRequired: cannot read {path}.
 
-The SQLite backend needs Full Disk Access for whichever binary launched
-this process. To grant it:
-
-  open \"x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles\"
-
-Then drag the binary into the list. For this build:
+The SQLite backend needs Full Disk Access. Grant it to this binary:
 
   {exe}
 
-Granting it to your terminal app is usually more reliable: macOS attributes
-file access to the responsible process at the top of the tree. Each
-`cargo build` produces a new binary hash, so a per-binary grant has to be
-redone after rebuilding. `notes grant-fda` walks through this.
+`notes grant-fda` opens the right Settings pane and reveals the binaries in
+Finder (or: open \"x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles\").
+The binary answers for itself in macOS privacy checks when it reads the
+database, so the grant applies even when it's started from a terminal. Each
+`cargo build` changes the binary's identity: re-add it after rebuilding.
 ",
         path = path.display()
     )
@@ -59,7 +76,10 @@ pub fn open_notes_sqlite(path: &Path) -> Result<Connection> {
     // TCC denials surface as EPERM on a plain open; SQLite would hide that.
     if let Err(e) = std::fs::File::open(path) {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
-            bail!(fda_hint(path));
+            return Err(FullDiskAccessRequired {
+                path: path.to_owned(),
+            }
+            .into());
         }
         return Err(anyhow!(e).context(format!("cannot open {}", path.display())));
     }
@@ -76,7 +96,10 @@ pub fn open_notes_sqlite(path: &Path) -> Result<Connection> {
     conn.map_err(|e| {
         let msg = e.to_string();
         if msg.contains("authorization denied") || msg.contains("Operation not permitted") {
-            anyhow!(fda_hint(path))
+            FullDiskAccessRequired {
+                path: path.to_owned(),
+            }
+            .into()
         } else {
             anyhow!(e).context(format!("cannot open {}", path.display()))
         }
