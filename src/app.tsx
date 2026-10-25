@@ -45,9 +45,20 @@ import { PreviewPane } from "./components/PreviewPane.tsx";
 import { HelpDialog } from "./components/HelpDialog.tsx";
 import { NewFolderDialog } from "./components/NewFolderDialog.tsx";
 import { BackendPickerDialog } from "./components/BackendPickerDialog.tsx";
+import { FdaScreen } from "./components/FdaScreen.tsx";
+import {
+  ensureSelfResponsible,
+  openFdaHelp as defaultOpenFdaHelp,
+  type FdaHelp,
+} from "./lib/grant-fda.ts";
 import type { Mode, Pane } from "./types.ts";
 
-export const App = () => {
+export const App = ({
+  openFdaHelp = defaultOpenFdaHelp,
+}: {
+  /** Opens Settings + Finder for a missing Full Disk Access grant (stubbed in tests). */
+  openFdaHelp?: () => FdaHelp;
+} = {}) => {
   const notes = useNotes();
   const { choice: backendChoice, setChoice: setBackendChoice } =
     useBackendChoice();
@@ -55,7 +66,14 @@ export const App = () => {
   const { height: termHeight } = useTerminalDimensions();
 
   // ── Folder state ────────────────────────────────────────────────────────
-  const { folders, loading, error, reload } = useFolders();
+  const { folders, loading, error, needsFda, reload } = useFolders();
+
+  // Open Settings + Finder the first time a missing Full Disk Access grant
+  // shows up this run; after that only on request (`o`), not on every retry.
+  const [fdaHelp, setFdaHelp] = useState<FdaHelp | null>(null);
+  useEffect(() => {
+    if (error && needsFda && !fdaHelp) setFdaHelp(openFdaHelp());
+  }, [error, needsFda, fdaHelp, openFdaHelp]);
   const folderById = useMemo(() => {
     const m = new Map<string, Folder>();
     for (const f of folders) m.set(f.id, f);
@@ -599,6 +617,9 @@ export const App = () => {
     collapseOrParent,
     openBackendPicker,
     quit,
+    errorScreen: !!error,
+    fdaActive: !!error && needsFda,
+    reopenFdaHelp: () => setFdaHelp(openFdaHelp()),
   });
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -616,13 +637,27 @@ export const App = () => {
 
   if (error) {
     return (
-      <box flexDirection="column" padding={1}>
-        <text fg="red">Error: {error}</text>
-        <text fg="#777">
-          On first run, macOS will ask permission to control Notes. If denied,
-          enable it in System Settings → Privacy &amp; Security → Automation.
-        </text>
-        <text fg="#777">Press Ctrl-C to quit.</text>
+      <box flexDirection="column" width="100%" height="100%">
+        {needsFda ? (
+          <FdaScreen help={fdaHelp} />
+        ) : (
+          <box flexDirection="column" padding={1}>
+            <text fg="red">Error: {error}</text>
+            <text fg="#777">
+              On first run, macOS will ask permission to control Notes. If
+              denied, enable it in System Settings → Privacy &amp; Security →
+              Automation.
+            </text>
+            <text> </text>
+            <text fg="#777">r retry · B switch backend · q quit</text>
+          </box>
+        )}
+        {mode.kind === "backendPicker" && (
+          <BackendPickerDialog
+            current={backendChoice}
+            onSelect={switchBackend}
+          />
+        )}
       </box>
     );
   }
@@ -795,6 +830,10 @@ if (import.meta.main) {
   // for one-off A/B testing without touching the file).
   const settings = await loadSettings();
   const initialChoice = resolveInitialBackendChoice(settings);
+  // A Full Disk Access grant on this binary only counts if it answers for
+  // itself rather than for the terminal that started it (see grant-fda.ts).
+  // Done before the renderer exists, since it may re-launch the process.
+  if (initialChoice === "sqlite") ensureSelfResponsible();
 
   // Persist on every in-app switch. We fire-and-forget — the user has
   // already moved on; if the write fails we don't want to block the UI.

@@ -26,6 +26,11 @@ type Deps = {
   collapseOrParent: () => void;
   openBackendPicker: () => void;
   quit: () => void;
+  /** The folder list failed to load and the error screen is showing. */
+  errorScreen: boolean;
+  /** …because the sqlite backend lacks Full Disk Access. */
+  fdaActive: boolean;
+  reopenFdaHelp: () => void;
 };
 
 // Some terminals report `?` directly; others report `/` with shift. Match either.
@@ -42,6 +47,16 @@ const isHelpKey = (key: { name: string; shift?: boolean }): boolean =>
  */
 export const useAppKeybindings = (deps: Deps): void => {
   useKeyboard((key) => {
+    // error screen: not a dead end — retry, switch backend (the picker draws
+    // over it), or reopen Settings + Finder for a missing FDA grant
+    if (deps.errorScreen && deps.mode.kind !== "backendPicker") {
+      if (key.name === "q") deps.quit();
+      else if (key.name === "r") deps.refresh();
+      else if (key.name === "b") deps.openBackendPicker();
+      else if (key.name === "o" && deps.fdaActive) deps.reopenFdaHelp();
+      return;
+    }
+
     // help dialog: ? or Esc closes it; nothing else does anything
     if (deps.helpOpen) {
       if (isHelpKey(key) || key.name === "escape") deps.setHelpOpen(false);

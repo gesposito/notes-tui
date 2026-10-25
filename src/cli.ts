@@ -15,7 +15,7 @@
 import { defineCommand, runMain } from "citty";
 import type { NotesBackend } from "./notes/types.ts";
 import { openNotesSqlite, SQLITE_DB_PATH } from "./notes/sqlite.ts";
-import { grantFda } from "./lib/grant-fda.ts";
+import { ensureSelfResponsible, grantFda } from "./lib/grant-fda.ts";
 
 // ── Output helpers ─────────────────────────────────────────────────────────
 const printJson = (value: unknown, raw: boolean): void => {
@@ -444,6 +444,14 @@ export const buildCli = (backend: NotesBackend) => {
 
 // ── Entry ──────────────────────────────────────────────────────────────────
 if (import.meta.main) {
+  // Reading Notes' database needs Full Disk Access, and a grant on this
+  // binary only counts if it answers for itself rather than for the
+  // terminal that started it (see lib/grant-fda.ts). The subcommand is the
+  // first non-flag argument, as citty resolves it.
+  const sub = process.argv.slice(2).find((a) => !a.startsWith("-"));
+  if (Bun.env.NOTES_BACKEND === "sqlite" || sub === "inspect") {
+    ensureSelfResponsible();
+  }
   const { notes } = await import("./notes/index.ts");
   await runMain(buildCli(notes));
 }

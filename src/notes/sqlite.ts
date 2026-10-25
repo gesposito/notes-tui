@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
+import { basename } from "node:path";
 import type { Folder, MoveResult, Note, NotesBackend } from "./types.ts";
 import { osascriptBackend } from "./osascript.ts";
 import { extractNoteText, snippetFromText } from "./sqlite-body.ts";
@@ -9,22 +10,31 @@ import { extractNoteText, snippetFromText } from "./sqlite-body.ts";
 // surface the EPERM/ENOENT to the user directly.
 const DB_PATH = `${homedir()}/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite`;
 
-const FDA_HINT = (path: string) => `Cannot read ${path}.
+// Names the binary to grant: this one when compiled. From source the process
+// is `bun` and macOS checks the terminal, and granting either would cover
+// far more than this app, so it points at the compiled CLI instead.
+const FDA_HINT = (path: string) => {
+  const target =
+    basename(process.execPath) === "bun"
+      ? `the compiled CLI,
+not your terminal or \`bun\` (either would cover far more than this app):
 
-The SQLite backend needs Full Disk Access for whichever binary launched
-this process. To grant it:
+  bun run build:cli   # → ./notes`
+      : `this binary:
 
-  open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+  ${process.execPath}`;
+  return `Cannot read ${path}.
 
-Then drag the binary into the list. For the compiled CLI:
+The SQLite backend needs Full Disk Access. Grant it to ${target}
 
-  bun run build:cli       # produces ./notes
-  codesign -s - ./notes   # ad-hoc sign so FDA persists across rebuilds
-
-For dev iteration with \`bun run cli\`, grant FDA to the \`bun\` binary
-itself (e.g. \`which bun\` → drag that path in). Note that \`bun upgrade\`
-replaces the binary, so you'd need to re-grant.
+\`bun run grant-fda\` (or \`notes grant-fda\`) opens the right Settings pane and
+reveals the binaries in Finder (or: open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles").
+The binaries answer for themselves in macOS privacy checks when they read
+the database, so the grant applies even when they're started from a
+terminal. Each build changes a binary's identity: re-add it after
+rebuilding.
 `;
+};
 
 // Wraps `new Database(...)` so the inevitable FDA failure produces the
 // hint above (with a stable error name) instead of a raw SQLITE_AUTH /

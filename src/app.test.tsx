@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { act } from "react";
 import { testRender } from "@opentui/react/test-utils";
 import { App } from "./app.tsx";
@@ -89,24 +89,51 @@ const interact = (
 // Plain-render variant for tests that need to see the loading state.
 // testRender itself isn't wrapped in act, so we wrap the call so
 // post-commit effects are captured.
-const mountRaw = async (backend: NotesBackend) => {
+type AppProps = NonNullable<Parameters<typeof App>[0]>;
+
+// Every mount stubs the Settings/Finder opener so no test opens real windows.
+const stubFdaHelp = () => ({
+  app: "notes-tui",
+  path: "/bin/notes-tui",
+  fromSource: false,
+});
+
+// What the sqlite backend throws without FDA (see notes/sqlite.ts).
+const fdaError = () =>
+  Object.assign(new Error("Cannot read NoteStore.sqlite."), {
+    name: "FullDiskAccessRequired",
+  });
+
+// Renderers mounted by the current test, destroyed after it so each one
+// releases its global listeners before the next test mounts another.
+const mounted: Awaited<ReturnType<typeof testRender>>[] = [];
+afterEach(async () => {
+  for (const { renderer } of mounted.splice(0)) {
+    await act(async () => {
+      await renderer.destroy();
+    });
+  }
+});
+
+const mountRaw = async (backend: NotesBackend, props: AppProps = {}) => {
   let handles!: Awaited<ReturnType<typeof testRender>>;
   await act(async () => {
     handles = await testRender(
       <NotesProvider backend={backend}>
-        <App />
+        <App openFdaHelp={stubFdaHelp} {...props} />
       </NotesProvider>,
       { width: 140, height: 30 },
     );
   });
+  mounted.push(handles);
   return handles;
 };
 
 // Standard mount: drains the initial useEffect chain (listFolders →
 // activeFolderIds → getFolderNotes/getFolderSnippets → preview-debounce)
 // so the test sees a fully-loaded UI.
-const mount = async (backend: NotesBackend) => {
-  const handles = await mountRaw(backend);
+const mount = async (backend: NotesBackend, props: AppProps = {}) => {
+  const handles = await mountRaw(backend, props);
   await interact(() => settle(0), 250);
   await handles.renderOnce();
   return handles;
@@ -374,5 +401,72 @@ describe("notes-tui", () => {
     expect(moveNotes).toHaveBeenCalledWith([
       { noteId: "n-child", folderId: "charlie" },
     ]);
+  });
+
+  test("a load error offers retry and backend switching, without opening Settings", async () => {
+    const openFdaHelp = mock(stubFdaHelp);
+    const { captureCharFrame } = await mount(
+      makeMock({
+        listFolders: async () => {
+          throw new Error("osascript failed (exit 1): not authorized");
+        },
+      }),
+      { openFdaHelp },
+    );
+    const frame = captureCharFrame();
+    expect(frame).toContain("Error: osascript failed (exit 1): not authorized");
+    expect(frame).toContain("r retry · B switch backend · q quit");
+    expect(openFdaHelp).not.toHaveBeenCalled();
+  });
+
+  test("missing Full Disk Access opens Settings once and offers a way out", async () => {
+    const listFolders = mock(async (): Promise<Folder[]> => {
+      throw fdaError();
+    });
+    const openFdaHelp = mock(stubFdaHelp);
+    const { mockInput, renderOnce, captureCharFrame } = await mount(
+      makeMock({ listFolders }),
+      { openFdaHelp },
+    );
+    const frame = captureCharFrame();
+    expect(frame).toContain("Full Disk Access needed");
+    expect(frame).toContain("turn on notes-tui");
+    expect(frame).toContain("Only notes-tui gets access, not your terminal");
+    expect(frame).toContain("o reopen Settings & Finder");
+    expect(openFdaHelp).toHaveBeenCalledTimes(1);
+
+    // Retrying re-hits the backend but doesn't reopen windows unasked.
+    await interact(() => mockInput.pressKeys(["r"]));
+    await renderOnce();
+    expect(listFolders).toHaveBeenCalledTimes(2);
+    expect(openFdaHelp).toHaveBeenCalledTimes(1);
+    expect(captureCharFrame()).toContain("Full Disk Access needed");
+
+    // `o` reopens them on demand.
+    await interact(() => mockInput.pressKeys(["o"]));
+    expect(openFdaHelp).toHaveBeenCalledTimes(2);
+
+    // B opens the backend picker over the error screen; Esc closes it.
+    await interact(() => mockInput.pressKeys(["B"]));
+    await renderOnce();
+    expect(captureCharFrame()).toContain("Switch Backend");
+    await interact(() => mockInput.pressEscape());
+    await renderOnce();
+    expect(captureCharFrame()).not.toContain("Switch Backend");
+  });
+
+  test("from source, missing Full Disk Access points at the compiled binary", async () => {
+    const { captureCharFrame } = await mount(
+      makeMock({
+        listFolders: async () => {
+          throw fdaError();
+        },
+      }),
+      { openFdaHelp: () => ({ app: "notes-tui", path: "", fromSource: true }) },
+    );
+    const frame = captureCharFrame();
+    expect(frame).toContain("Running from source");
+    expect(frame).toContain("Build it with bun run build");
+    expect(frame).toContain("run ./notes-tui from the repo root");
   });
 });
