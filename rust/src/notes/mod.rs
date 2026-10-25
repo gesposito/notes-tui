@@ -9,6 +9,9 @@ pub mod osascript;
 pub mod sqlite;
 pub mod sqlite_body;
 
+use std::fmt;
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -85,6 +88,66 @@ pub trait NotesBackend: Send + Sync {
     async fn create_folder(&self, account_name: &str, name: &str) -> Result<()>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BackendChoice {
+    Osa,
+    ScriptingBridge,
+    Sqlite,
+}
+
+impl BackendChoice {
+    /// Display order in the backend picker.
+    pub const ALL: [BackendChoice; 3] = [Self::Osa, Self::ScriptingBridge, Self::Sqlite];
+
+    /// The value accepted by `NOTES_BACKEND` and stored in settings.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Osa => "osa",
+            Self::ScriptingBridge => "scripting-bridge",
+            Self::Sqlite => "sqlite",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Osa => "osascript (default)",
+            Self::ScriptingBridge => "scripting-bridge (Swift helper)",
+            Self::Sqlite => "sqlite (NoteStore.sqlite, needs FDA)",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.as_str() == s)
+    }
+
+    /// `NOTES_BACKEND`, defaulting to osa (see the backend-scaling notes in
+    /// the README: osa is the right default for bulk reads).
+    pub fn from_env() -> Self {
+        std::env::var("NOTES_BACKEND")
+            .ok()
+            .and_then(|v| Self::parse(&v))
+            .unwrap_or(Self::Osa)
+    }
+}
+
+impl fmt::Display for BackendChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Fresh backend instance for `choice`. Callers that switch backends at
+/// runtime should cache instances so the scripting-bridge helper process is
+/// reused.
+pub fn make_backend(choice: BackendChoice) -> Arc<dyn NotesBackend> {
+    match choice {
+        BackendChoice::Osa => Arc::new(osascript::OsascriptBackend),
+        BackendChoice::ScriptingBridge => Arc::new(bridge::ScriptingBridgeBackend::new()),
+        BackendChoice::Sqlite => Arc::new(sqlite::SqliteBackend::new(sqlite::default_db_path())),
+    }
+}
+
 /// Notes.app can surface the same item under multiple specifiers (smart
 /// folders, "Recently Deleted"). Dedupe by id, keeping the first occurrence.
 pub(crate) fn dedupe_by_id<T>(items: Vec<T>, id: impl Fn(&T) -> &str) -> Vec<T> {
@@ -98,6 +161,15 @@ pub(crate) fn dedupe_by_id<T>(items: Vec<T>, id: impl Fn(&T) -> &str) -> Vec<T> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backend_choice_round_trips_through_its_string_form() {
+        for c in BackendChoice::ALL {
+            assert_eq!(BackendChoice::parse(c.as_str()), Some(c));
+            assert_eq!(serde_json::to_string(&c).unwrap(), format!("\"{c}\""));
+        }
+        assert_eq!(BackendChoice::parse("bogus"), None);
+    }
 
     #[test]
     fn move_result_omits_error_when_ok() {
