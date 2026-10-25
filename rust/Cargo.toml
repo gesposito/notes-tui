@@ -9,7 +9,21 @@ publish = false
 [dependencies]
 anyhow = "1.0.104"
 async-trait = "0.1.92"
+chrono = { version = "0.4.45", default-features = false, features = [
+  "alloc",
+  "std",
+] }
+flate2 = "1.1.10"
 indexmap = { version = "2.14.2", features = ["serde"] }
+rusqlite = { version = "0.41.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
-tokio = { version = "1.54.1", features = ["process", "io-util"] }
+tokio = { version = "1.54.1", features = [
+  "macros",
+  "rt",
+  "process",
+  "io-util",
+] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

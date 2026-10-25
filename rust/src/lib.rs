@@ -6,3 +6,4 @@
 //! the settings file, and expose the same `notes` CLI surface.
 
 pub mod notes;
+pub mod text;

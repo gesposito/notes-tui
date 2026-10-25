@@ -5,6 +5,8 @@
 //! `notes` CLI prints the same JSON as the Bun build.
 
 pub mod osascript;
+pub mod sqlite;
+pub mod sqlite_body;
 
 use anyhow::Result;
 use async_trait::async_trait;
