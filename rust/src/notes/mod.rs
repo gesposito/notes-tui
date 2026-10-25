@@ -6,6 +6,7 @@
 
 pub mod bridge;
 pub mod logging;
+pub mod mock;
 pub mod osascript;
 pub mod sqlite;
 pub mod sqlite_body;

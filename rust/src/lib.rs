@@ -5,5 +5,8 @@
 //! ScriptingBridge helper, or a read-only NoteStore.sqlite reader), share
 //! the settings file, and expose the same `notes` CLI surface.
 
+pub mod cli;
+pub mod folder_tree;
+pub mod grant_fda;
 pub mod notes;
 pub mod text;
