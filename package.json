@@ -15,7 +15,11 @@
     "build:helper": "swiftc -O helper/main.swift -framework ScriptingBridge -framework Foundation -o helper/notes-bridge",
     "cli": "bun run src/cli.ts",
     "grant-fda": "bun run scripts/grant-fda.ts",
-    "start:bridge": "NOTES_BACKEND=scripting-bridge bun run src/app.tsx"
+    "start:bridge": "NOTES_BACKEND=scripting-bridge bun run src/app.tsx",
+    "start:rust": "cargo run --release --quiet --manifest-path rust/Cargo.toml --bin notes-tui",
+    "cli:rust": "cargo run --release --quiet --manifest-path rust/Cargo.toml --bin notes --",
+    "build:rust": "cargo build --release --manifest-path rust/Cargo.toml",
+    "verify:rust": "cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test"
   },
   "devDependencies": {
     "@types/bun": "latest",

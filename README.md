@@ -18,6 +18,7 @@ See [Permissions](#permissions) below — the osa/SB backends only need Automati
 bun run start                  # interactive three-pane browser
 bun run dev                    # same, with --watch
 bun run build && ./notes-tui   # type check, then compile a standalone binary
+bun run start:rust             # same TUI, Rust build (see Rust variant)
 ```
 
 Three panes (folders | notes | preview). Highlights:
@@ -32,6 +33,7 @@ Three panes (folders | notes | preview). Highlights:
 ```bash
 bun run cli <command>          # run from source
 bun run build:cli && ./notes   # type check, then compile a standalone `notes` binary
+bun run cli:rust <command>     # same CLI, Rust build
 ```
 
 Subcommands mirror the underlying NotesBackend; output is JSON to stdout (`-r` for compact).
@@ -56,12 +58,12 @@ notes move <NOTE_ID> [<NOTE_ID>...] -t <FOLDER_ID>
 [`rust/`](./rust) holds a Rust port that lives alongside the Bun app — both are kept. Same three backends (with the same JXA scripts), same `notes` subcommands and JSON output, same settings file; the TUI uses ratatui instead of OpenTUI.
 
 ```bash
-cd rust
-cargo run --release                           # TUI (notes-tui)
-cargo run --release --bin notes -- folders    # CLI
-cargo install --path .                        # installs notes + notes-tui into ~/.cargo/bin
-cargo run --example mock_tui                  # the TUI over in-memory data — no Notes access
-cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+bun run start:rust                 # TUI (cargo builds it on first run)
+bun run cli:rust folders           # CLI, same subcommands as `bun run cli`
+bun run build:rust                 # → rust/target/release/{notes-tui,notes}
+bun run verify:rust                # cargo fmt --check + clippy + tests
+cargo install --path rust          # installs notes + notes-tui into ~/.cargo/bin
+cargo run --manifest-path rust/Cargo.toml --example mock_tui   # TUI over in-memory data, no Notes access
 ```
 
 - Backends are picked the same way (`NOTES_BACKEND`, `B` in the TUI, persisted to the shared `config.json`). scripting-bridge spawns the same `helper/notes-bridge`; `NOTES_BRIDGE_HELPER` points it elsewhere.
