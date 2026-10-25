@@ -396,8 +396,11 @@ export const App = () => {
     reload,
   });
 
-  const quit = () => {
-    renderer?.destroy();
+  const quit = async () => {
+    renderer.destroy();
+    // destroy() restores the terminal asynchronously; exit only once that's
+    // done. `closed` rejects if stdout failed — exit regardless.
+    await renderer.closed.catch(() => {});
     process.exit(0);
   };
 

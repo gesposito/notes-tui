@@ -19,15 +19,15 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/react": "^19.2.14"
+    "@types/react": "^19.3.0"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^7"
   },
   "dependencies": {
-    "@opentui/core": "^0.2.1",
-    "@opentui/react": "^0.2.1",
+    "@opentui/core": "^0.6.8",
+    "@opentui/react": "^0.6.8",
     "citty": "^0.2.2",
-    "react": "^19.2.5"
+    "react": "^19.3.1"
   }
 }
